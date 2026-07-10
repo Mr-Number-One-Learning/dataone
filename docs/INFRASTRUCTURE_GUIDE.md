@@ -98,8 +98,8 @@ If you see an error in Grafana stating:
 **Cause:** When your Windows host machine goes to sleep or hibernates, the clock inside the Linux VM (WSL2) running Docker stops. Upon waking up, the VM's clock does not always sync back with the host, causing metrics to be recorded with timestamps from the past.
 
 **Fix:** 
-1. **Windows (WSL2):** Open PowerShell and run `wsl --exec hwclock -s` to manually force the VM to resync its hardware clock with Windows.
-2. **Alternative:** Simply restart Docker Desktop (Quit and re-open) to launch the VM with the correct time.
+1. **Windows (WSL2):** Open PowerShell and run `wsl --shutdown`. This will fully shut down the WSL VM. Wait a few seconds, then restart Docker Desktop. It will boot a fresh VM with the correctly synced time.
+2. **Alternative:** Simply restarting Docker Desktop (Quit and re-open) may also work, but `wsl --shutdown` guarantees the underlying VM clock resets.
 
 ## 🧨 Teardown & Destroy
 
