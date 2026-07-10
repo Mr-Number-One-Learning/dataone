@@ -89,6 +89,18 @@ Grafana is provisioned automatically with its datasources and dashboards via con
 
 **Validation:** Dashboards are auto-loaded by Grafana via `dashboards.yml`. Column/metric names are cross-checked automatically by `tests/test_grafana_dashboards.py` and `tests/test_clickhouse_ddl.py` — they are continuously validated in CI, not just eyeballed.
 
+## 🩺 Troubleshooting
+
+### Grafana/Prometheus Clock Drift (WSL2 / Docker Desktop)
+If you see an error in Grafana stating:
+> *Warning: Error fetching server time: Detected X seconds time difference between your browser and the server. Prometheus relies on accurate time and time drift might cause unexpected query results.*
+
+**Cause:** When your Windows host machine goes to sleep or hibernates, the clock inside the Linux VM (WSL2) running Docker stops. Upon waking up, the VM's clock does not always sync back with the host, causing metrics to be recorded with timestamps from the past.
+
+**Fix:** 
+1. **Windows (WSL2):** Open PowerShell and run `wsl --exec hwclock -s` to manually force the VM to resync its hardware clock with Windows.
+2. **Alternative:** Simply restart Docker Desktop (Quit and re-open) to launch the VM with the correct time.
+
 ## 🧨 Teardown & Destroy
 
 To prevent accidental CPU usage or persistent resource overallocation on your host machine, ensure you tear down the environment when finished.
