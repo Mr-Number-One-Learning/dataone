@@ -119,6 +119,8 @@ Run the offline test suite locally with `make test` (Spark/Iceberg-dependent tes
 
 For more detailed information, please refer to the specific documentation guides located throughout the repository:
 
+- **[Architecture & Design Decisions](docs/DECISION.md)**: The single source of truth for the platform's architectural paradigm, tool selection justifications, and structural implementations.
+
 - **[Data Dictionary & Schema Contract](docs/DATA_DICTIONARY.md)**: Details the exact lineage paths and precise schema mapping from Bronze through Gold layers.
 - **[Infrastructure Guide](docs/INFRASTRUCTURE_GUIDE.md)**: Maps the Docker profiles, environment variables, mapped ports, and teardown commands.
 - **[NiFi Flows Guide](docs/NIFI_FLOWS_GUIDE.md)**: Visual architecture of the Apache NiFi ingestion processes.
