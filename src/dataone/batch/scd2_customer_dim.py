@@ -78,8 +78,6 @@ def apply_scd2_merge(spark: SparkSession, incoming_df: DataFrame, as_of: datetim
     as_of_sql = _format_timestamp_literal(as_of)
     target = table_identifier("gold", "dim_customer")
 
-    incoming_df = incoming_df.withColumn("sk_customer_id", make_surrogate_key("customer_id"))
-
     # Unique view name per invocation so two merges sharing one SparkSession
     # (e.g. a backfill loop) can't clobber each other's source view.
     incoming_view = f"_scd2_incoming_{uuid.uuid4().hex}"
@@ -117,7 +115,7 @@ def apply_scd2_merge(spark: SparkSession, incoming_df: DataFrame, as_of: datetim
         f"""
         INSERT INTO {target}
         SELECT
-            source.sk_customer_id, source.customer_id, {select_tracked},
+            MD5(CONCAT_WS('||', 'postgres', CAST(source.customer_id AS STRING), CAST({valid_time_expr} AS STRING))) AS sk_customer_id, source.customer_id, {select_tracked},
             {valid_time_expr} AS valid_from,
             CAST(NULL AS TIMESTAMP) AS valid_to,
             true AS is_current

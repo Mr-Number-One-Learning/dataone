@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS dataone_marts.fact_order_items
 (
     sk_order_id    String,
     order_id       Int64,
+    sk_customer_id String,
     customer_id    Int64,
     order_date     DateTime64(3),
     date_key       Int32,

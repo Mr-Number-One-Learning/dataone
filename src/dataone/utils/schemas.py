@@ -263,6 +263,7 @@ GOLD_FACT_ORDER_ITEMS = {
     "columns": [
         ("sk_order_id", "STRING"),
         ("order_id", "BIGINT"),
+        ("sk_customer_id", "STRING"),
         ("customer_id", "BIGINT"),
         ("order_date", "TIMESTAMP"),
         ("date_key", "INT"),

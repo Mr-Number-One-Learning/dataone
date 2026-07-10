@@ -355,7 +355,7 @@ def merge_into_silver(spark: SparkSession, df: DataFrame, table_name: str, merge
     """)
 
 
-def build_fact_order_items(orders_df: DataFrame, order_items_df: DataFrame, products_df: DataFrame) -> DataFrame:
+def build_fact_order_items(orders_df: DataFrame, order_items_df: DataFrame, products_df: DataFrame, customer_dim_full_df: DataFrame) -> DataFrame:
     """
     One row per order line item — joining orders (Kafka CDC via the
     lakehouse) with order_items and products (direct JDBC) is the
@@ -370,8 +370,16 @@ def build_fact_order_items(orders_df: DataFrame, order_items_df: DataFrame, prod
         order_items_df.alias("oi")
         .join(orders_df.alias("o"), on="order_id", how="inner")
         .join(F.broadcast(products_df).alias("p"), on="product_id", how="inner")
+        .join(
+            F.broadcast(customer_dim_full_df).alias("c"),
+            on=(F.col("o.customer_id") == F.col("c.customer_id")) &
+               (F.col("o.order_date") >= F.col("c.valid_from")) &
+               (F.col("c.valid_to").isNull() | (F.col("o.order_date") < F.col("c.valid_to"))),
+            how="inner"
+        )
         .select(
             F.col("o.order_id"),
+            F.col("c.sk_customer_id"),
             F.col("o.customer_id"),
             F.col("o.order_date"),
             F.col("o.status"),
@@ -948,6 +956,12 @@ def main() -> None:
         customers_silver_df = spark.read.format("iceberg").load(table_identifier("silver", "customers"))
         orders_silver_df = spark.read.format("iceberg").load(table_identifier("silver", "orders"))
 
+        apply_scd2_merge(spark, customers_silver_df)
+        customer_dim_full_df = spark.read.format("iceberg").load(
+            table_identifier("gold", "dim_customer")
+        )
+        customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
+
         # upperBound tracks the real table size (cheap MAX() probe) instead
         # of a hardcoded ceiling that silently skews the JDBC partition split
         # once the table outgrows it.
@@ -968,8 +982,8 @@ def main() -> None:
         write_append(products_quality.quarantined_df, "quarantine", "products")
         
         # Build Gold using the persisted Silver DataFrames
-        fact_order_items_df = build_fact_order_items(orders_silver_df, order_items_df, products_df).withColumn(
-            "sk_order_id", make_surrogate_key("order_id")
+        fact_order_items_df = build_fact_order_items(orders_silver_df, order_items_df, products_df, customer_dim_full_df).withColumn(
+            "sk_order_id", F.md5(F.concat_ws("||", F.lit("postgres"), F.col("order_id").cast("string"), F.col("product_id").cast("string")))
         ).cache()
 
         quality_result = run_quality_gate(
@@ -990,12 +1004,6 @@ def main() -> None:
             "fact_order_items"
         )
         write_append(quality_result.quarantined_df, "quarantine", "fact_order_items")
-
-        apply_scd2_merge(spark, customers_silver_df)
-        customer_dim_full_df = spark.read.format("iceberg").load(
-            table_identifier("gold", "dim_customer")
-        )
-        customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
 
         silver_reviews_df = build_silver_reviews(bronze["reviews"])
         reviews_quality = run_quality_gate(
