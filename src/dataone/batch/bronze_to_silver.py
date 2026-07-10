@@ -37,7 +37,7 @@ from pyspark.sql.window import Window
 
 from dataone.batch.scd2_customer_dim import apply_scd2_merge
 from dataone.config import clickhouse, postgres
-from dataone.quality.validators import reconcile_row_counts, run_quality_gate
+from dataone.quality.validators import reconcile_row_counts, run_quality_gate, QualityResult
 from dataone.utils.iceberg_helpers import bootstrap_namespaces_sql, table_identifier, make_surrogate_key
 from dataone.utils.logging_config import get_logger
 from dataone.utils.schemas import ALL_TABLES, create_all_tables_sql
@@ -865,6 +865,22 @@ def _complete_pipeline_run(
                 (status, rows_processed, rows_quarantined, error_message, run_id),
             )
 
+def build_quality_gate_summary(
+    spark: SparkSession,
+    batch_date: "date",
+    results: dict[str, QualityResult],
+) -> DataFrame:
+    """One row per dataset for this run: (batch_date, table_name, passed_count,
+    quarantined_count). Built from counts run_quality_gate() already computed —
+    no new Spark actions, no re-scanning any table."""
+    rows = [
+        (batch_date, table_name, result.passed_count, result.quarantined_count)
+        for table_name, result in results.items()
+    ]
+    return spark.createDataFrame(
+        rows, schema="batch_date date, table_name string, passed_count long, quarantined_count long"
+    )
+
 def build_quarantine_summary(spark: SparkSession) -> DataFrame:
     """Builds a daily summary of quarantined rows across all pipelines.
 
@@ -1034,6 +1050,17 @@ def main() -> None:
         write_overwrite_partitions(silver_clickstream_passed, "silver", "clickstream")
         write_append(final_clickstream_quarantine, "quarantine", "clickstream")
 
+        from datetime import date
+        quality_results_by_table = {
+            "campaigns": campaigns_quality,
+            "customers": customers_quality,
+            "orders": orders_quality,
+            "products": products_quality,
+            "fact_order_items": quality_result,
+            "reviews": reviews_quality,
+            "clickstream": clickstream_quality,
+        }
+
         # Rebuilt (not create-if-missing) every run: it's ~1k rows, and this
         # way a widened DIM_DATE_START/END env range takes effect immediately
         # instead of being frozen at first bootstrap.
@@ -1054,6 +1081,9 @@ def main() -> None:
             "funnel_conversion": build_funnel_conversion(silver_clickstream_passed),
             "roas": build_roas(quality_result.passed_df, bronze["campaigns"]),
             "quarantine_summary": build_quarantine_summary(spark),
+            "quality_gate_summary": build_quality_gate_summary(
+                spark, date.today(), quality_results_by_table
+            ),
         }
         for name, df in gold.items():
             write_overwrite_partitions(df, "gold", name)

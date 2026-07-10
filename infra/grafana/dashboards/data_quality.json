@@ -43,6 +43,33 @@
       ]
     },
     {
+      "id": 6,
+      "title": "Overall Quarantine Rate (%)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT if(sum(passed_count) + sum(quarantined_count) = 0, 0, sum(quarantined_count) / (sum(passed_count) + sum(quarantined_count)) * 100) FROM quality_gate_summary",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "id": 2,
       "title": "Quarantine by Reason",
       "type": "barchart",
@@ -52,8 +79,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 9,
-        "x": 6,
+        "w": 6,
+        "x": 12,
         "y": 0
       },
       "targets": [
@@ -79,8 +106,8 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 9,
-        "x": 15,
+        "w": 6,
+        "x": 18,
         "y": 0
       },
       "targets": [

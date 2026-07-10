@@ -39,6 +39,7 @@ Monitors system health, ingestion rates, and infrastructure metrics.
 | **Postgres Active Connections** | Tracks DB pool exhaustion. | Protects the OLTP database from being overwhelmed by extraction or ingestions. |
 | **ClickHouse Query Rate** | Measures analytical load on the serving layer. | Ensures dashboard responsiveness during peak usage. |
 | **Kafka Brokers & Partitions** | Health of the message bus. | Guarantees no streaming data is lost or severely bottlenecked in transit. |
+| **Kafka Clickstream Backlog** | Tracks consumer lag for the live clickstream ingestion. | Detects if real-time behavioral data is falling behind. |
 | **Postgres / Spark Up** | Uptime heartbeat checks. | Triggers immediate alerts if core ingestion or processing engines go offline. |
 
 ---
@@ -52,6 +53,7 @@ Tracks the PySpark Data Quality Gate metrics, including rows passed vs. quaranti
 
 | Panel Name | Description | Business Value |
 |---|---|---|
+| **Overall Quarantine Rate (%)** | True percentage of incoming data that failed the quality gate. | Provides an objective baseline for data health rather than raw counts alone. |
 | **Total Quarantined Rows** | Raw count of records that failed the validation gate. | Immediately highlights systemic data corruption or schema drifts upstream. |
 | **Quarantine by Reason** | Categorizes failures (e.g., `null_check_failed`). | Points data engineers directly to the root cause. |
 | **Quarantine by Table** | Shows which datasets (Orders, Reviews) are producing errors. | Prioritizes data engineering triage efforts. |

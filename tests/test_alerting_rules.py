@@ -76,6 +76,25 @@ def test_kafka_lag_metric_uses_the_real_exporter_name():
     )
     assert "kafka_consumergroup_lag_sum" in raw
 
+def test_high_quarantine_rate_uses_quality_gate_summary():
+    rules = list(_all_rules(_load_rules()))
+    rule = next(r for r in rules if r["uid"] == "high_quarantine_rate")
+    assert rule["paused"] is False
+    sql_a = rule["data"][0]["model"]["rawSql"]
+    sql_b = rule["data"][1]["model"]["rawSql"]
+    assert "quality_gate_summary" in sql_a
+    assert "quality_gate_summary" in sql_b
+    assert "daily_sales" not in sql_b
+
+def test_kafka_consumer_lag_old_is_paused_and_stopgap_exists():
+    rules = list(_all_rules(_load_rules()))
+    old_rule = next(r for r in rules if r["uid"] == "kafka_consumer_lag_old")
+    assert old_rule["paused"] is True
+    
+    stopgap_rule = next(r for r in rules if r["uid"] == "kafka_consumer_lag_stopgap")
+    assert stopgap_rule["paused"] is False
+    expr = stopgap_rule["data"][0]["model"]["expr"]
+    assert "kafka_topic_partition_current_offset" in expr
 
 def test_contact_point_provisioning_exists():
     """Alert rules route nowhere without a provisioned contact point and a

@@ -24,6 +24,7 @@ GOLD_SCHEMAS_BY_TABLE = {
     "conversion_rate": schemas.GOLD_CONVERSION_RATE,
     "campaign_effectiveness": schemas.GOLD_CAMPAIGN_EFFECTIVENESS,
     "fact_order_items": schemas.GOLD_FACT_ORDER_ITEMS,
+    "quality_gate_summary": schemas.GOLD_QUALITY_GATE_SUMMARY,
 }
 
 

@@ -260,6 +260,16 @@ ORDER BY (batch_date, table_name, failure_reason)
 TTL batch_date + INTERVAL 90 DAY DELETE;
 CREATE TABLE IF NOT EXISTS dataone_marts.quarantine_summary_staging AS dataone_marts.quarantine_summary;
 
+CREATE TABLE IF NOT EXISTS dataone_marts.quality_gate_summary (
+    batch_date Date,
+    table_name String,
+    passed_count Int64,
+    quarantined_count Int64
+) ENGINE = MergeTree()
+ORDER BY (batch_date, table_name);
+
+CREATE TABLE IF NOT EXISTS dataone_marts.quality_gate_summary_staging AS dataone_marts.quality_gate_summary;
+
 
 -- -----------------------------------------------------------------------------
 -- Real-Time Streaming Marts (Lambda Architecture)

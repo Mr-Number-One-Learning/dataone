@@ -43,6 +43,10 @@ def build_spark_session(app_name: str, with_kafka: bool = False) -> SparkSession
         packages.append(KAFKA_PACKAGE)
     builder = builder.config("spark.jars.packages", ",".join(packages))
 
+    if app_name == "dataone-streaming":
+        builder = builder.config("spark.sql.streaming.metricsEnabled", "true")
+        builder = builder.config("spark.ui.prometheus.enabled", "true")
+
     # OpenLineage configuration
     builder = builder.config("spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener")
     builder = builder.config("spark.openlineage.namespace", "dataone")

@@ -20,7 +20,7 @@ If a row passes, it moves downstream normally. If it fails *any* check, it is **
 2. It is routed and appended to a `quarantine.<table_name>` Iceberg table.
 
 ### 3. Aggregation and Monitoring
-To ensure quarantined data isn't just "swept under the rug", the batch pipeline automatically builds a **`quarantine_summary`** Gold mart. This table aggregates failures across all datasets by `batch_date`, `table_name`, and `failure_reason`, providing a clean interface for data quality dashboards and alerting.
+To ensure quarantined data isn't just "swept under the rug", the batch pipeline automatically builds a **`quarantine_summary`** Gold mart. This table aggregates failures across all datasets by `batch_date`, `table_name`, and `failure_reason`. Alongside it, a **`quality_gate_summary`** mart tracks overall passed vs. quarantined rows, providing a clean interface for true quarantine rate monitoring in data quality dashboards and alerting.
 
 ---
 
@@ -45,4 +45,4 @@ Currently, the quality gate covers seven core datasets:
 1. **No Data Loss:** Dropping data silently hides upstream bugs and corrupts financial metrics. Quarantining guarantees every row is accounted for.
 2. **Fault Tolerance:** A single bad row won't crash a pipeline processing millions of good rows, ensuring dashboards update on time.
 3. **Replayability:** Because the exact raw payload is saved, data engineers can fix the parsing bug and replay the quarantined rows back into the pipeline without asking the upstream source to resend the data.
-4. **Automated Observability:** The `quarantine_summary` mart allows the team to set alerts in Grafana (e.g., *"Page on-call if quarantine volume exceeds 1% of total batch"*), shifting data quality from reactive debugging to proactive monitoring.
+4. **Automated Observability:** The `quality_gate_summary` mart allows the team to set alerts in Grafana (e.g., *"Page on-call if quarantine rate exceeds 5% of total batch"*), shifting data quality from reactive debugging to proactive monitoring.

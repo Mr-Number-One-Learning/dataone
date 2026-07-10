@@ -5,8 +5,9 @@ groups:
     folder: "DataOne Alerts"
     interval: 1m
     rules:
-      - uid: "high_quarantine_rate"
-        title: "High Quarantine Rate"
+      - uid: "high_quarantine_rate_old"
+        title: "High Quarantine Rate (Deprecated)"
+        paused: true
         condition: "C"
         data:
           - refId: "A"
@@ -46,13 +47,56 @@ groups:
         labels:
           severity: "warning"
 
+      - uid: "high_quarantine_rate"
+        title: "High Quarantine Rate"
+        paused: false
+        condition: "C"
+        data:
+          - refId: "A"
+            queryType: "sql"
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "dataone-clickhouse"
+            model:
+              queryType: "sql"
+              format: 1
+              rawSql: "SELECT coalesce(sum(quarantined_count), 0) FROM quality_gate_summary WHERE batch_date = today()"
+              refId: "A"
+          - refId: "B"
+            queryType: "sql"
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "dataone-clickhouse"
+            model:
+              queryType: "sql"
+              format: 1
+              rawSql: "SELECT coalesce(sum(passed_count), 0) FROM quality_gate_summary WHERE batch_date = today()"
+              refId: "B"
+          - refId: "C"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              type: "math"
+              expression: "$A / ($A + $B) > 0.05"
+              refId: "C"
+        noDataState: "OK"
+        execErrState: "Alerting"
+        for: "5m"
+        annotations:
+          summary: "Quarantine rate is above 5%"
+        labels:
+          severity: "warning"
+
   - orgId: 1
     name: "Infrastructure Alerts"
     folder: "DataOne Alerts"
     interval: 1m
     rules:
-      - uid: "kafka_consumer_lag"
-        title: "High Kafka Consumer Lag"
+      - uid: "kafka_consumer_lag_old"
+        title: "High Kafka Consumer Lag (Deprecated)"
+        paused: true
         condition: "B"
         data:
           - refId: "A"
@@ -78,5 +122,34 @@ groups:
         for: "5m"
         annotations:
           summary: "Kafka consumer lag exceeds 10,000 for dataone-streaming"
+        labels:
+          severity: "critical"
+
+      - uid: "kafka_consumer_lag_stopgap"
+        title: "High Kafka Consumer Lag (Stopgap)"
+        paused: false
+        condition: "B"
+        data:
+          - refId: "A"
+            queryType: ""
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: "dataone-prometheus"
+            model:
+              expr: 'kafka_topic_partition_current_offset{topic="clickstream"} - kafka_topic_partition_oldest_offset{topic="clickstream"}'
+              refId: "A"
+          - refId: "B"
+            queryType: ""
+            datasourceUid: "__expr__"
+            model:
+              type: "math"
+              expression: "$A > 500000"
+              refId: "B"
+        noDataState: "OK"
+        execErrState: "Alerting"
+        for: "5m"
+        annotations:
+          summary: "Kafka clickstream topic backlog exceeds 500,000"
         labels:
           severity: "critical"

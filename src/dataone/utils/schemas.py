@@ -386,6 +386,26 @@ GOLD_QUARANTINE_SUMMARY = {
 }
 
 # ---------------------------------------------------------------------------
+# QUALITY GATE SUMMARY — one row per (batch_date, table_name) per run,
+# capturing BOTH sides of run_quality_gate()'s output. Unlike
+# quarantine_summary (quarantined rows only), this is the table the "quarantine
+# rate" alert needs, since a true rate requires a denominator of total rows
+# seen by the gate, not just total rows sold (order_count).
+# ---------------------------------------------------------------------------
+
+GOLD_QUALITY_GATE_SUMMARY = {
+    "layer": "gold",
+    "table": "quality_gate_summary",
+    "columns": [
+        ("batch_date", "DATE"),
+        ("table_name", "STRING"),
+        ("passed_count", "BIGINT"),
+        ("quarantined_count", "BIGINT"),
+    ],
+    "partition_by": ["months(batch_date)"],
+}
+
+# ---------------------------------------------------------------------------
 # QUARANTINE — same shape as the silver table it failed validation for, plus
 # the reason. One per silver table that runs through run_quality_gate().
 # ---------------------------------------------------------------------------
@@ -489,6 +509,7 @@ ALL_TABLES = [
     GOLD_FUNNEL_CONVERSION,
     GOLD_ROAS,
     GOLD_QUARANTINE_SUMMARY,
+    GOLD_QUALITY_GATE_SUMMARY,
     QUARANTINE_FACT_ORDER_ITEMS,
     QUARANTINE_CAMPAIGNS,
     QUARANTINE_REVIEWS,

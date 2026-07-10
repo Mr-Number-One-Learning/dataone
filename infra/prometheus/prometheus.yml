@@ -32,6 +32,11 @@ scrape_configs:
     static_configs:
       - targets: ["spark-master:8080"]
 
+  - job_name: "spark-streaming-driver"
+    metrics_path: /metrics/prometheus
+    static_configs:
+      - targets: ["spark-worker-streaming:4040"]
+
   - job_name: "postgres"
     static_configs:
       - targets: ["postgres-exporter:9187"]

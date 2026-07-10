@@ -266,6 +266,7 @@ Contains the complete Kimball Star Schema and all pre-aggregated business marts.
 - **`gold.funnel_conversion`**: Full checkout funnel (page_view → add_to_cart → checkout_start → checkout_complete).
 - **`gold.roas`**: Return On Ad Spend per campaign.
 - **`gold.quarantine_summary`**: Aggregates daily failure counts by table and reason for Data Quality monitoring.
+- **`gold.quality_gate_summary`**: Aggregates daily passed and quarantined counts across tables to calculate true data quality rates.
 
 ### 🚨 Quarantine Layer
 - **`quarantine.*` (e.g., `fact_order_items`, `customers`, `reviews`)**: 

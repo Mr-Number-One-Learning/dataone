@@ -29,7 +29,7 @@ Data is cleansed, joined, and standardized. Invalid records are routed to the `q
 ### 4. Gold Layer (Star Schema + Business Analytics Marts)
 The complete Kimball star schema plus aggregated, highly optimized marts directly served to ClickHouse/Grafana.
 - Star schema: `gold.fact_order_items`, `gold.dim_customer` (SCD Type 2), `gold.dim_product`, `gold.dim_campaign`, `gold.dim_date`.
-- Marts: `gold.daily_sales`, `gold.top_products`, `gold.customer_segments`, `gold.conversion_rate`, `gold.campaign_effectiveness`, `gold.product_sentiment`, `gold.customer_clv`, `gold.funnel_conversion`, `gold.roas`, `gold.quarantine_summary`.
+- Marts: `gold.daily_sales`, `gold.top_products`, `gold.customer_segments`, `gold.conversion_rate`, `gold.campaign_effectiveness`, `gold.product_sentiment`, `gold.customer_clv`, `gold.funnel_conversion`, `gold.roas`, `gold.quarantine_summary`, `gold.quality_gate_summary`.
 
 ---
 

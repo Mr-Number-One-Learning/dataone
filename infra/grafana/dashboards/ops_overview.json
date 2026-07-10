@@ -288,6 +288,35 @@
         "type": "prometheus",
         "uid": "dataone-prometheus"
       }
+    },
+    {
+      "id": 9,
+      "title": "Kafka Clickstream Backlog",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 20
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "kafka_topic_partition_current_offset{topic=\"clickstream\"} - kafka_topic_partition_oldest_offset{topic=\"clickstream\"}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
     }
   ]
 }
