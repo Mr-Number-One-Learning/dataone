@@ -251,7 +251,7 @@ services:
     # for local dev; on Docker Desktop (Mac/Windows) this introspects the
     # Desktop VM, not the literal host OS, which is exactly what we want
     # since every other service here runs inside that same VM too.
-    mem_limit: "256m"
+    mem_limit: "512m"
     cpus: "0.3"
 
   spark-master:
