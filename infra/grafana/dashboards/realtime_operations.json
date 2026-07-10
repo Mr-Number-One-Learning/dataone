@@ -1,0 +1,219 @@
+{
+  "uid": "dataone-realtime-ops",
+  "title": "DataOne — Real-Time Operations Command Center",
+  "description": "Live pulse of the business: CDC-driven order flow, estimated revenue, and operational alerts powered by ClickHouse Materialized Views over Kafka.",
+  "tags": ["dataone", "real-time", "operations"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-2h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Orders Last 5 Min",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT countMerge(order_count) FROM rt_orders_per_minute WHERE window_start > now() - INTERVAL 5 MINUTE",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Order Status Breakdown (Live)",
+      "type": "piechart",
+        "options": {
+          "reduceOptions": {
+            "values": true,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "pieType": "pie"
+        },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT status, order_count FROM rt_order_status_counts FINAL",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Estimated Revenue (Last Hour)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT sum(est_revenue) FROM rt_revenue_estimate WHERE window_start > now() - INTERVAL 1 HOUR",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Order Velocity (Live)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT window_start AS time, countMerge(order_count) AS orders FROM rt_orders_per_minute WHERE window_start > now() - INTERVAL 2 HOUR GROUP BY window_start ORDER BY window_start",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Sessions + Checkouts (Live Pulse)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT window_start AS time, event_count, checkout_completions FROM live_activity WHERE window_start > now() - INTERVAL 2 HOUR ORDER BY window_start",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Stale Orders Alert (Placed > 30m)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT order_id, status, captured_at, dateDiff('minute', captured_at, now()) AS minutes_stale FROM rt_orders_raw FINAL WHERE status = 'placed' AND captured_at < now() - INTERVAL 30 MINUTE ORDER BY captured_at LIMIT 20",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Batch vs Real-Time Extrapolation",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT (SELECT sum(order_count) FROM daily_sales WHERE sales_date = today() - 1) AS yesterday_batch, (SELECT countMerge(order_count) * 24 FROM rt_orders_per_minute WHERE window_start > now() - INTERVAL 1 HOUR) AS today_projected",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}
+

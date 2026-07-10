@@ -1,0 +1,12 @@
+# Python deps needed INSIDE the Spark container by the job scripts in
+# src/dataone/streaming/ and src/dataone/batch/ — deliberately NOT the full
+# requirements.txt (which includes generator-only deps like faker/kafka-python
+# that never run inside Spark). pyspark itself ships in the apache/spark
+# python3 base image already; don't reinstall it here.
+#
+# Grows as batch/streaming job implementations are filled in — keep this
+# pinned to what's actually imported, not what might eventually be needed.
+python-dotenv==1.0.1
+structlog==24.1.0
+textblob==0.18.0
+psycopg2-binary==2.9.9

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
+.env
+!.env.example
+*.pem
+
+# Data (never commit generated/landed data)
+data/raw/*
+!data/raw/.gitkeep
+*.parquet
+*.csv
+!data/seed/*.csv
+
+# Docker / volumes
+infra/**/data/
+*.log
+
+# Spark / checkpoints
+**/checkpoints/
+**/spark-warehouse/
+*.crc
+_SUCCESS
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local setup / testing binaries
+.hadoop/
+jdk.zip
+
+#others
+scratch/
+docs/Extra/
+docs/presentation/
+*.docx
+*.docs

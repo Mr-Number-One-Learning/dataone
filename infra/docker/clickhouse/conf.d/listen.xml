@@ -1,0 +1,6 @@
+<clickhouse>
+    <!-- Override the default listen_host (127.0.0.1) so that other
+         containers on the Docker network can reach ClickHouse.
+         Safe for local dev; do NOT use in production without TLS/auth. -->
+    <listen_host>0.0.0.0</listen_host>
+</clickhouse>

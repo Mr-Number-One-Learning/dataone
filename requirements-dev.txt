@@ -1,0 +1,13 @@
+pytest==8.2.1
+pytest-cov==5.0.0
+black==24.4.2
+ruff==0.4.4
+# Used by tests/test_alerting_rules.py to parse the provisioned Grafana
+# alerting YAML.
+pyyaml==6.0.1
+# pyspark itself is in requirements.txt already (the jobs need it at
+# runtime, not just for tests). `make test-spark` / `make test-iceberg`
+# additionally need a JDK on whatever machine runs them — not a pip
+# package; e.g. `apt install openjdk-17-jdk-headless` on Debian/Ubuntu.
+# `make test-iceberg` also needs network on first run (fetches the Iceberg
+# jar from Maven via spark.jars.packages — see tests/conftest.py).

@@ -1,0 +1,15 @@
+<!--
+    Auto-merged into ClickHouse's config on startup (everything in
+    /etc/clickhouse-server/config.d/ is loaded). Enables the built-in
+    Prometheus metrics endpoint — no separate exporter process needed for
+    ClickHouse, unlike Postgres/Kafka.
+-->
+<clickhouse>
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>9363</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+</clickhouse>

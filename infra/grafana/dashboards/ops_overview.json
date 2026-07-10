@@ -1,0 +1,293 @@
+{
+  "uid": "dataone-ops-overview",
+  "title": "DataOne \u2014 Ops Overview",
+  "description": "Container resources (cAdvisor), Kafka broker/partition health, Postgres connections, ClickHouse query rate. Prometheus datasource.",
+  "tags": [
+    "dataone",
+    "ops"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Container CPU Usage",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\"dataone-.+\"}[5m])",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Container Memory Usage",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "container_memory_usage_bytes{name=~\"dataone-.+\"}",
+          "legendFormat": "{{name}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Postgres Active Connections",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "pg_stat_database_numbackends",
+          "legendFormat": "{{datname}}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 4,
+      "title": "ClickHouse Query Rate",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "qps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "rate(ClickHouseProfileEvents_Query[5m])",
+          "legendFormat": "queries/sec",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Kafka Brokers",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "kafka_brokers",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Kafka Topic Partitions",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "sum(kafka_topic_partitions)",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Postgres Up",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "pg_up",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Spark Master Up",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "dataone-prometheus"
+          },
+          "expr": "up{job=\"spark-master\"}",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "dataone-prometheus"
+      }
+    }
+  ]
+}

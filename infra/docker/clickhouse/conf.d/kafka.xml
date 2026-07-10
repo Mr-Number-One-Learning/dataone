@@ -1,0 +1,6 @@
+<clickhouse>
+    <kafka>
+        <auto_offset_reset>earliest</auto_offset_reset>
+        <max_poll_interval_ms>30000</max_poll_interval_ms>
+    </kafka>
+</clickhouse>

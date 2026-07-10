@@ -1,0 +1,23 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: dataone-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+
+  - name: ClickHouse
+    uid: dataone-clickhouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    jsonData:
+      host: clickhouse
+      port: 9000
+      defaultDatabase: dataone_marts
+    secureJsonData:
+      password: "${CLICKHOUSE_PASSWORD}"
+    isDefault: true
+    editable: true

@@ -1,0 +1,46 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "kafka"
+    static_configs:
+      - targets: ["kafka-exporter:9308"]
+
+  - job_name: "nifi"
+    # Correct as of NiFi 1.x/2.x — NOT /nifi-api/metrics (that path doesn't
+    # exist; the Prometheus ReportingTask approach was removed in NiFi 2.x
+    # in favor of always-on REST exposure at this path).
+    #
+    # CAVEAT (not fixed here — outside this section's scope, flagging
+    # rather than hiding it): NiFi is configured with single-user auth
+    # (SINGLE_USER_CREDENTIALS_* in docker-compose.yml), which issues a JWT
+    # via login, not simple HTTP basic auth — a plain static scrape config
+    # like this will likely get 401s. Fixing it means either generating a
+    # long-lived API token for Prometheus's bearer_token_file, or accepting
+    # this target shows DOWN. Worth revisiting when NiFi flows are actually
+    # running (docs/NIFI_FLOWS_GUIDE.md), not blocking section 5 on it.
+    metrics_path: /nifi-api/flow/metrics/prometheus
+    static_configs:
+      - targets: ["nifi:8443"]
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true   # self-signed cert, local dev only
+
+  - job_name: "spark-master"
+    metrics_path: /metrics/master/prometheus
+    static_configs:
+      - targets: ["spark-master:8080"]
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "clickhouse"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["clickhouse:9363"]
+
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]

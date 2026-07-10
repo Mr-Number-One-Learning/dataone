@@ -1,0 +1,369 @@
+{
+  "uid": "dataone-business-kpis",
+  "title": "DataOne — Business KPIs",
+  "description": "The 5 batch-computed marts (daily_sales, top_products, customer_segments, conversion_rate, campaign_effectiveness) plus the streaming job's real-time live_activity pulse. ClickHouse datasource.",
+  "tags": [
+    "dataone",
+    "business"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-1y",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Daily Revenue (7d / 30d rolling avg)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT sales_date AS time, total_revenue, revenue_7d_avg, revenue_30d_avg FROM daily_sales ORDER BY sales_date",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Top 5 Products by Revenue (per category)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT category, product_name, units_sold, revenue, rank_in_category FROM top_products WHERE rank_in_category <= 5 ORDER BY category, rank_in_category",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Customer Segments",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT segment, customer_count, total_revenue, avg_order_value FROM customer_segments ORDER BY total_revenue DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Sessions vs Checkout Completions",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT activity_date AS time, sessions, checkout_completions FROM conversion_rate ORDER BY activity_date",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Conversion Rate",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT activity_date AS time, conversion_rate FROM conversion_rate ORDER BY activity_date",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Campaign Effectiveness",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT name, channel, spend, clicks, conversions, cost_per_conversion FROM campaign_effectiveness ORDER BY spend DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Live Activity Pulse (last 2h)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "description": "Written by the streaming job's foreachBatch sink, not the batch job — activity counts, not revenue (order_items/products aren't available from streaming sources alone, see utils/schemas.py).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT window_start AS time, event_count, active_sessions, checkout_completions FROM live_activity WHERE window_start > now() - INTERVAL 2 HOUR ORDER BY window_start",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Product Sentiment",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT product_name, review_count, avg_rating, avg_sentiment FROM product_sentiment ORDER BY review_count DESC LIMIT 20",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Return on Ad Spend (ROAS)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT name, channel, spend, attributed_revenue, roas FROM roas ORDER BY roas DESC",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Customer Lifetime Value (Top 20)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT full_name, total_orders, total_spend, avg_order_value, days_since_last_order, segment FROM customer_clv ORDER BY total_spend DESC LIMIT 20",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Funnel Conversion Rates",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "dataone-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "dataone-clickhouse"
+          },
+          "queryType": "sql",
+          "format": 1,
+          "rawSql": "SELECT activity_date AS time, cart_to_checkout_rate, checkout_to_purchase_rate FROM funnel_conversion ORDER BY activity_date",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataone"
+version = "0.1.0"
+description = "DataOne — E-commerce Sales Analytics Platform (batch + real-time lakehouse)"
+requires-python = ">=3.10"
+
+# src layout: `pip install -e .` puts the dataone package on the path, so
+# `python -m dataone....` works without manually exporting PYTHONPATH=src.
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = [
+    "spark: needs a real local SparkSession (Java required) — see tests/conftest.py",
+    "iceberg: needs a local SparkSession with a real Iceberg catalog (Java + network on first run to fetch the Iceberg jar) — see tests/conftest.py",
+]
+# Default run excludes both — neither is available in every dev environment,
+# and the Iceberg one needs network. `make test-spark` / `make test-iceberg`
+# or `pytest -m spark` / `pytest -m iceberg` override this explicitly.
+addopts = "-m \"not spark and not iceberg\""

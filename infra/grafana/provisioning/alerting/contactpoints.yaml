@@ -1,0 +1,30 @@
+# Provisioned contact point + notification policy for the alert rules in
+# rules.yaml. Without a contact point and a root policy pointing at it,
+# Grafana evaluates the rules but the alerts ROUTE NOWHERE — they only ever
+# show up if someone happens to be looking at the Alerting UI.
+#
+# The webhook URL is a placeholder resolved from the container environment:
+# set ALERT_WEBHOOK_URL in .env (e.g. a Slack incoming-webhook or an
+# on-call bridge) and pass it through to the grafana service in
+# docker-compose.yml. Until a real URL is configured, deliveries will fail
+# visibly in Grafana's notification log instead of silently not existing.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: dataone-webhook
+    receivers:
+      - uid: dataone-webhook-receiver
+        type: webhook
+        settings:
+          url: "${ALERT_WEBHOOK_URL}"
+          httpMethod: POST
+        disableResolveMessage: false
+
+policies:
+  - orgId: 1
+    receiver: dataone-webhook
+    group_by: ["grafana_folder", "alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
