@@ -126,12 +126,12 @@ For more detailed information, please refer to the specific documentation guides
 - **[NiFi Flows Guide](docs/NIFI_FLOWS_GUIDE.md)**: Visual architecture of the Apache NiFi ingestion processes.
 - **[Dashboards Guide](docs/DASHBOARDS.md)**: Previews of the Grafana dashboards for Business KPIs, Operations, Realtime Operations, and Data Quality.
 - **[Data Modeling Architecture](docs/DATA_MODELING.md)**: Details the Medallion & Kimball dimensional modeling choices, performance optimizations, and SCD Type 2 logic.
-- **[Prefect Orchestration Migration Plan](docs/Prefect_Migration_Plan.md)**: Details the migration roadmap for replacing Makefiles with Prefect for advanced pipeline orchestration and observability.
+- **[Prefect Orchestration Migration Plan](docs/future/Prefect_Migration_Plan.md)**: Details the migration roadmap for replacing Makefiles with Prefect for advanced pipeline orchestration and observability.
 - **[Quality & Validation Guide](docs/TESTING_GUIDE.md)**: Outlines Pytest usage, the Spark/Iceberg dependency markers, and the internal Data Quality validation gate.
 - **[Quarantine Layer Architecture](docs/QUARANTINE_LAYER.md)**: Illustrates the DLQ mechanism, how bad rows are routed to quarantine instead of being dropped, and how they are monitored.
-- **[Future Improvements Roadmap](docs/Future_Improvements.md)**: Strategic recommendations for elevating the project to a Lead/Senior Data Engineering tier (e.g., dbt, DataHub, CI/CD).
-- **[Cloud Deployment Plan](docs/Cloud_Deployment_Plan.md)**: Architectural roadmap and migration strategy for moving the platform to AWS or Azure.
-- **[Stage 1: Future Plan - Predictive Modeling](docs/ML_Model_Implementation_Plan.md)**: Details the roadmap for integrating MLflow, Prophet forecasting, and XGBoost churn models into the platform.
+- **[Future Improvements Roadmap](docs/future/Future_Improvements.md)**: Strategic recommendations for elevating the project to a Lead/Senior Data Engineering tier (e.g., dbt, DataHub, CI/CD).
+- **[Cloud Deployment Plan](docs/future/Cloud_Deployment_Plan.md)**: Architectural roadmap and migration strategy for moving the platform to AWS or Azure.
+- **[Stage 1: Future Plan - Predictive Modeling](docs/future/ML_Model_Implementation_Plan.md)**: Details the roadmap for integrating MLflow, Prophet forecasting, and XGBoost churn models into the platform.
 - **[Contributing Guide](CONTRIBUTING.md)**: Formalizes the local `venv` setup, formatting/linting using Black and Ruff, and PR documentation rules.
 
 ---
