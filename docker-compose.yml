@@ -127,7 +127,7 @@ services:
       POSTGRES_DB: "${POSTGRES_DB}"
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-    command: [ "-c", "shared_buffers=128MB", "-c", "max_connections=50" ]
+    command: [ "-c", "shared_buffers=128MB", "-c", "max_connections=100" ]
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/docker/postgres/init:/docker-entrypoint-initdb.d
@@ -472,3 +472,55 @@ services:
       - ./src:/opt/dataone/src
     mem_limit: "128m"
     cpus: "0.2"
+
+  # ---------------- Orchestration (Prefect) ----------------
+
+  prefect-redis:
+    image: redis:7-alpine
+    profiles: [ "core" ]
+    container_name: dataone-prefect-redis
+    networks: [ dataone-net ]
+    mem_limit: "256m"
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    profiles: [ "core" ]
+    container_name: dataone-prefect-server
+    networks: [ dataone-net ]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prefect-redis:
+        condition: service_started
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/prefect"
+      PREFECT_SERVER_API_HOST: "0.0.0.0"
+      PREFECT_API_URL: "http://localhost:4200/api"
+      PREFECT_UI_API_URL: "http://localhost:4200/api"
+      PREFECT_MESSAGING_BROKER: "prefect_redis.messaging"
+      PREFECT_MESSAGING_CACHE: "prefect_redis.messaging"
+      PREFECT_REDIS_MESSAGING_HOST: "dataone-prefect-redis"
+    command: prefect server start --host 0.0.0.0
+    mem_limit: "512m"
+
+  prefect-worker:
+    <<: *spark-image
+    profiles: [ "core" ]
+    container_name: dataone-prefect-worker
+    networks: [ dataone-net ]
+    depends_on:
+      prefect-server:
+        condition: service_started
+    environment:
+      PREFECT_API_URL: "http://dataone-prefect-server:4200/api"
+      PYTHONPATH: "/opt/dataone/src"
+    volumes:
+      - ./src:/opt/dataone/src
+    entrypoint: ["bash", "-c"]
+    command: >
+      "pip install --no-cache-dir prefect &&
+       prefect work-pool create dataone-process-pool --type process --overwrite &&
+       prefect worker start --pool dataone-process-pool"
+    mem_limit: "512m"

@@ -24,7 +24,6 @@ from pymongo.errors import BulkWriteError
 
 from dataone.config import mongo, nifi
 from dataone.generators.domain import fetch_max_id
-from dataone.orchestration.retry import with_retry
 from dataone.utils.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -195,15 +194,23 @@ def push_to_mongo(n_reviews: int = N_REVIEWS) -> int:
     return written
 
 
-@with_retry(max_attempts=3, exceptions=(requests.RequestException,))
+import time
 def _post_review(review: dict) -> None:
     """POSTs a single review to NiFi via HTTP.
 
     Args:
         review (dict): The review document to send.
     """
-    resp = requests.post(nifi.reviews_ingest_url, json=review, timeout=REQUEST_TIMEOUT_SECONDS)
-    resp.raise_for_status()
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            resp = requests.post(nifi.reviews_ingest_url, json=review, timeout=REQUEST_TIMEOUT_SECONDS)
+            resp.raise_for_status()
+            return
+        except requests.RequestException:
+            if attempt == max_attempts - 1:
+                raise
+            time.sleep(2 ** attempt)
 
 
 def push_via_nifi(n_reviews: int = N_REVIEWS) -> int:

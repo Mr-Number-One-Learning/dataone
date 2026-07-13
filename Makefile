@@ -51,7 +51,7 @@ stream-job: kafka-topics
 	  /opt/dataone/src/dataone/streaming/structured_streaming_job.py
 
 stream-cdc:
-	python -m dataone.ingestion.cdc_simulator
+	python src/dataone/orchestration/cdc_poll.py
 
 stream-live-orders:
 	python -m dataone.generators.live_orders_generator
@@ -59,7 +59,7 @@ stream-live-orders:
 # realtime: kafka-topics stream-cdc stream-live-orders stream-clickstream
 
 schedule:
-	python -m dataone.orchestration.scheduler $(if $(INTERVAL),--interval $(INTERVAL),)
+	python src/dataone/orchestration/nightly_batch.py
 
 test:
 	pytest -v
