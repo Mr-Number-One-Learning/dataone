@@ -1,0 +1,38 @@
+{
+  "dataset": "gold.daily_sales",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "sales_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "order_count",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "total_revenue",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "revenue_7d_avg",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "revenue_30d_avg",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "months(sales_date)"
+  ],
+  "sort_order": null
+}

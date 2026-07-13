@@ -1,0 +1,69 @@
+{
+  "dataset": "silver.reviews",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "review_id"
+  ],
+  "business_keys": [
+    "review_id"
+  ],
+  "columns": [
+    {
+      "name": "review_id",
+      "type": "STRING",
+      "nullable": false
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "rating",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "title",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "body",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "verified_purchase",
+      "type": "BOOLEAN",
+      "nullable": true
+    },
+    {
+      "name": "submitted_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "ingested_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "sentiment_score",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "days(submitted_at)"
+  ],
+  "sort_order": [
+    "review_id"
+  ]
+}

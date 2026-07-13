@@ -1,0 +1,8 @@
+{
+  "dataset": "gold.roas",
+  "upstream": [
+    "gold.fact_order_items",
+    "bronze.campaigns"
+  ],
+  "downstream": []
+}

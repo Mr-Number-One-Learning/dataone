@@ -1,0 +1,33 @@
+{
+  "dataset": "gold.conversion_rate",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "activity_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "sessions",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "checkout_completions",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "conversion_rate",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "months(activity_date)"
+  ],
+  "sort_order": null
+}

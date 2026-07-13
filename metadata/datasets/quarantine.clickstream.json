@@ -1,0 +1,7 @@
+{
+  "name": "quarantine.clickstream",
+  "description": "Quarantine dataset for clickstream",
+  "domain": "web",
+  "layer": "quarantine",
+  "data_classification": "restricted"
+}

@@ -1,0 +1,54 @@
+{
+  "dataset": "silver.customers",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "customer_id"
+  ],
+  "business_keys": [
+    "customer_id"
+  ],
+  "columns": [
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "full_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "email",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "segment",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "address",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "captured_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "bucket(16, customer_id)"
+  ],
+  "sort_order": [
+    "customer_id"
+  ]
+}

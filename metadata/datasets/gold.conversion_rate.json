@@ -1,0 +1,7 @@
+{
+  "name": "gold.conversion_rate",
+  "description": "Gold dataset for conversion_rate",
+  "domain": "web",
+  "layer": "gold",
+  "data_classification": "internal"
+}

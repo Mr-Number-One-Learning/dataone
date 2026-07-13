@@ -1,0 +1,7 @@
+{
+  "name": "gold.campaign_effectiveness",
+  "description": "Gold dataset for campaign_effectiveness",
+  "domain": "marketing",
+  "layer": "gold",
+  "data_classification": "internal"
+}

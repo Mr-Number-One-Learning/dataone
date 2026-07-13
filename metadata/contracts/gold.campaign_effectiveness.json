@@ -1,0 +1,52 @@
+{
+  "dataset": "gold.campaign_effectiveness",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "campaign_id"
+  ],
+  "business_keys": [
+    "campaign_id"
+  ],
+  "columns": [
+    {
+      "name": "campaign_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "channel",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "spend",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "clicks",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "conversions",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "cost_per_conversion",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "campaign_id"
+  ]
+}

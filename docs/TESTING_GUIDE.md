@@ -82,3 +82,26 @@ quality_result = run_quality_gate(
 # Write quality_result.passed_df -> gold.fact_order_items
 # Write quality_result.quarantined_df -> quarantine.fact_order_items
 ```
+
+---
+
+## 📋 Metadata & Contract Validation Testing
+
+The platform enforces schemas and evolutionary controls dynamically at runtime via Data Contracts. 
+
+**Test Suite:** `tests/test_metadata_contracts.py`
+
+### 1. Metadata Registry Verification
+Tests verify that the `MetadataRegistry` (configured in `src/dataone/metadata/registry.py`) correctly loads JSON files from the `metadata/` subfolders on startup, maps types correctly, and dynamically translates them into PySpark `StructType` definitions for table bootstrapping.
+
+### 2. Schema Evolution & Violation Checks
+Tests verify schema validation behavior under different evolution policies:
+- **`none` Policy**: Extra columns injected during pipeline runs raise `DataContractViolation` exceptions immediately, shutting down the pipeline.
+- **`backward` Policy**: Additional columns are permitted only if they are nullable (not forcing schema updates for consumers), while dropping fields or changing datatypes triggers contract failures.
+
+### 3. Lineage Tracker Validation
+Lineage runs are verified using simulated Python mocks, ensuring that:
+- Input/output datasets are correctly added.
+- Job metrics (records processed, quarantined counts) map to postgres tracking fields.
+- OpenLineage JSON envelopes conform to the specification and trigger event emission.
+

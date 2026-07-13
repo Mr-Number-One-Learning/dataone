@@ -40,7 +40,9 @@ class _FakeConn:
         return self.cursor_obj
 
 
-def test_bulk_copy_writes_all_rows_in_batches():
+def test_bulk_copy_writes_all_rows_in_batches(monkeypatch):
+    import psycopg2.extensions
+    monkeypatch.setattr(psycopg2.extensions, "quote_ident", lambda s, scope=None: f'"{s}"')
     conn = _FakeConn()
     rows = [(i, f"row-{i}") for i in range(1, 251)]  # 250 rows, batch_size=100 -> 3 flushes
     written = bulk_copy(conn, "t", ["id", "name"], iter(rows), batch_size=100)
@@ -51,7 +53,9 @@ def test_bulk_copy_writes_all_rows_in_batches():
     assert total_lines == 250
 
 
-def test_bulk_copy_empty_input():
+def test_bulk_copy_empty_input(monkeypatch):
+    import psycopg2.extensions
+    monkeypatch.setattr(psycopg2.extensions, "quote_ident", lambda s, scope=None: f'"{s}"')
     conn = _FakeConn()
     written = bulk_copy(conn, "t", ["id"], iter([]), batch_size=100)
     assert written == 0
@@ -117,8 +121,10 @@ def test_build_review_schema_genuinely_varies():
     assert len(shapes) > 1, "reviews should have intentionally variable shape, not one fixed schema"
 
 
-def test_build_review_required_fields_always_present():
+def test_build_review_required_fields_always_present(monkeypatch):
     from faker import Faker
+    import dataone.generators.reviews_generator as rg
+    monkeypatch.setattr(rg, "GEN_MESSINESS_RATE", 0.0)
 
     faker = Faker()
     for _ in range(50):
@@ -132,7 +138,10 @@ def test_build_review_required_fields_always_present():
 # campaign_generator
 # ---------------------------------------------------------------------------
 
-def test_build_campaign_row_fields_and_invariants():
+def test_build_campaign_row_fields_and_invariants(monkeypatch):
+    import dataone.generators.campaign_generator as cg
+    monkeypatch.setattr(cg, "GEN_MESSINESS_RATE", 0.0)
+    
     row = build_campaign_row(campaign_id=1)
     assert row["campaign_id"] == 1
     assert row["budget"] > 0

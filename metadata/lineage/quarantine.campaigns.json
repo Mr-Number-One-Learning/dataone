@@ -1,0 +1,7 @@
+{
+  "dataset": "quarantine.campaigns",
+  "upstream": [
+    "bronze.campaigns"
+  ],
+  "downstream": []
+}

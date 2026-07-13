@@ -1,0 +1,33 @@
+{
+  "dataset": "gold.quarantine_summary",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "batch_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "table_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "failure_reason",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "row_count",
+      "type": "BIGINT",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "months(batch_date)"
+  ],
+  "sort_order": null
+}

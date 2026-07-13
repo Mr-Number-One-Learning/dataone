@@ -1,0 +1,9 @@
+{
+  "dataset": "silver.orders",
+  "upstream": [
+    "bronze.orders_cdc"
+  ],
+  "downstream": [
+    "gold.fact_order_items"
+  ]
+}

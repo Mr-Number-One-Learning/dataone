@@ -1,0 +1,62 @@
+{
+  "dataset": "gold.customer_clv",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "customer_id"
+  ],
+  "business_keys": [
+    "customer_id"
+  ],
+  "columns": [
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "full_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "total_orders",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "total_spend",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "first_order_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "last_order_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "avg_order_value",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "days_since_last_order",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "segment",
+      "type": "STRING",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "customer_id"
+  ]
+}

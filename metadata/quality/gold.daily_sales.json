@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.daily_sales",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

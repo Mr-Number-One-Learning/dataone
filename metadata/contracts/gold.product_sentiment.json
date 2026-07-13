@@ -1,0 +1,52 @@
+{
+  "dataset": "gold.product_sentiment",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "product_id"
+  ],
+  "business_keys": [
+    "product_id"
+  ],
+  "columns": [
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "review_count",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "avg_rating",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "avg_sentiment",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "pct_verified",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "product_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "category",
+      "type": "STRING",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "product_id"
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "dataset": "gold.top_products",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "product_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "sku",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "category",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "units_sold",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "revenue",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "rank_in_category",
+      "type": "INT",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": null
+}

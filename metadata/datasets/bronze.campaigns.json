@@ -1,0 +1,7 @@
+{
+  "name": "bronze.campaigns",
+  "description": "Bronze dataset for campaigns",
+  "domain": "marketing",
+  "layer": "bronze",
+  "data_classification": "internal"
+}

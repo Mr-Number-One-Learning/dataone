@@ -1,0 +1,7 @@
+{
+  "name": "gold.funnel_conversion",
+  "description": "Gold dataset for funnel_conversion",
+  "domain": "web",
+  "layer": "gold",
+  "data_classification": "internal"
+}

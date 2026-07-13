@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.conversion_rate",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.dim_customer",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

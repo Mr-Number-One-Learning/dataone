@@ -1,0 +1,37 @@
+{
+  "dataset": "gold.customer_segments",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "customer_id"
+  ],
+  "business_keys": [
+    "customer_id"
+  ],
+  "columns": [
+    {
+      "name": "segment",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "customer_count",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "total_revenue",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "avg_order_value",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "customer_id"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "dataset": "quarantine.reviews",
+  "upstream": [
+    "bronze.reviews"
+  ],
+  "downstream": []
+}

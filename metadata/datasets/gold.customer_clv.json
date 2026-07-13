@@ -1,0 +1,7 @@
+{
+  "name": "gold.customer_clv",
+  "description": "Gold dataset for customer_clv",
+  "domain": "customers",
+  "layer": "gold",
+  "data_classification": "confidential"
+}

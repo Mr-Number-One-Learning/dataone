@@ -312,5 +312,22 @@ The `gold.dim_customer` implements **SCD Type 2**.
 
 ---
 
+## 6. Dataset-First Design & Partitioning Strategy
+
+### Dataset-First Philosophy
+In the refactored platform, **datasets are the primary, permanent entities** rather than Spark execution jobs. Spark and Prefect jobs are merely implementation details that run to populate these datasets. 
+Every dataset has associated metadata contracts declaring its ownership, SLA, partition transforms, schemas, and quality standards, making the dataset self-describing and independent of processing pipelines.
+
+### Partitioning & Compaction Details
+To optimize performance, limit metadata overhead, and solve the "small files problem":
+- **Iceberg Partition Evolution**: High-volume tables use Iceberg's native partition transforms (e.g., `days(order_date)`, `months(submitted_at)`, and `bucket(16, customer_id)`). This allows the partitioning schema to evolve over time (e.g., changing from daily to monthly) without rewriting historical data.
+- **Sort Order**: Key datasets are sorted by high-query-frequency keys (e.g., `fact_order_items` sorted by `order_date` and `customer_id`) before writing. This clusters data logically, improving parquet min/max dictionary pruning.
+- **Target File Size**: The platform targets **100–500 MB** Iceberg data files. For local low-resource containers, row groups are tuned to `16 MiB` to avoid OOMs, but in production, Iceberg properties control file sizing:
+  `'write.target-file-size-bytes'='536870912'` (512 MB).
+- **Compaction & Retention**: A maintenance routine calls Iceberg's `rewrite_data_files` to compact small files into the target size and runs `expire_snapshots` to enforce data retention limits.
+
+---
+
 *Created by **Eng. Ahmed Maher Al-Maqtari***  
 *Copyright © Mr.NumberOne*
+

@@ -1,0 +1,28 @@
+{
+  "dataset": "bronze.campaigns",
+  "required_columns": [
+    "campaign_id",
+    "name",
+    "start_date",
+    "end_date"
+  ],
+  "column_bounds": {
+    "budget": [
+      0,
+      null
+    ],
+    "spend": [
+      0,
+      null
+    ],
+    "clicks": [
+      0,
+      null
+    ],
+    "conversions": [
+      0,
+      null
+    ]
+  },
+  "custom_rules": []
+}

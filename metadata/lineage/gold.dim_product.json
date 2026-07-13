@@ -1,0 +1,7 @@
+{
+  "dataset": "gold.dim_product",
+  "upstream": [
+    "postgres.products"
+  ],
+  "downstream": []
+}

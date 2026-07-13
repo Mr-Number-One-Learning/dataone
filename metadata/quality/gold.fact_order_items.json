@@ -1,0 +1,19 @@
+{
+  "dataset": "gold.fact_order_items",
+  "required_columns": [
+    "order_id",
+    "customer_id",
+    "product_id"
+  ],
+  "column_bounds": {
+    "unit_price": [
+      0,
+      null
+    ],
+    "quantity": [
+      1,
+      null
+    ]
+  },
+  "custom_rules": []
+}

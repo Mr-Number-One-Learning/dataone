@@ -1,0 +1,28 @@
+{
+  "dataset": "bronze.dead_letters",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "value",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "source_topic",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "failed_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "days(failed_at)"
+  ],
+  "sort_order": null
+}

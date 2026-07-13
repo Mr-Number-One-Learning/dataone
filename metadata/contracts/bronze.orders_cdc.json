@@ -1,0 +1,49 @@
+{
+  "dataset": "bronze.orders_cdc",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "order_id"
+  ],
+  "business_keys": [
+    "order_id"
+  ],
+  "columns": [
+    {
+      "name": "table_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "op",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "pk_column",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "pk_value",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "data_json",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "captured_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "days(captured_at)"
+  ],
+  "sort_order": [
+    "order_id"
+  ]
+}

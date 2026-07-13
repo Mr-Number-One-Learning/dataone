@@ -1,0 +1,6 @@
+{
+  "dataset": "quarantine.fact_order_items",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

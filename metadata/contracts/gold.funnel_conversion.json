@@ -1,0 +1,48 @@
+{
+  "dataset": "gold.funnel_conversion",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "activity_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "page_view",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "add_to_cart",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "checkout_start",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "checkout_complete",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "cart_to_checkout_rate",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "checkout_to_purchase_rate",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "months(activity_date)"
+  ],
+  "sort_order": null
+}

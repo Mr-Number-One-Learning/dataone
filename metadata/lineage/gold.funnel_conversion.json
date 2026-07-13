@@ -1,0 +1,7 @@
+{
+  "dataset": "gold.funnel_conversion",
+  "upstream": [
+    "silver.clickstream"
+  ],
+  "downstream": []
+}

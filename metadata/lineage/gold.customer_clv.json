@@ -1,0 +1,8 @@
+{
+  "dataset": "gold.customer_clv",
+  "upstream": [
+    "gold.fact_order_items",
+    "gold.dim_customer"
+  ],
+  "downstream": []
+}

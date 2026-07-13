@@ -143,24 +143,31 @@ For more detailed information, please refer to the specific documentation guides
 ├── README.md               # This file
 ├── CONTRIBUTING.md         # Developer setup and PR guide
 ├── docker-compose.yml      # Multi-container orchestration definitions
+├── pyproject.toml          # Project configuration, dependencies, and lint settings
+├── metadata/               # Dynamic Metadata Layer (datasets, contracts, lineage, quality, ownership JSONs)
 ├── data/
 │   ├── lakehouse/          # Iceberg warehouse directory (mounted to Spark containers)
 │   └── raw/                # Local data generation outputs
-├── docs/                   # Extended project documentation
+├── docs/                   # Extended project documentation, architecture, & runbooks
 ├── infra/
-│   ├── docker/             # Dockerfiles and DB Initialization scripts (SQL)
-│   ├── grafana/            # Provisioned dashboards and datasources
-│   └── prometheus/         # Metrics configurations
+│   ├── docker/             # Dockerfiles and database initialization scripts (Postgres, ClickHouse, Spark)
+│   ├── grafana/            # Provisioned dashboards (KPIs, quality, ops) and alert rules
+│   └── prometheus/         # Prometheus metrics scrape configurations
+├── notebooks/              # Jupyter notebooks for data analysis and prototyping
+├── scripts/                # Bootstrap and helper shell scripts (wait-for-services, database seeding)
 ├── src/
-│   └── dataone/
-│       ├── batch/          # Batch ETL pipeline scripts (bronze_to_silver.py, scd2)
-│       ├── config.py       # Centralized env/credential management
-│       ├── generators/     # Synthetic data generators (orders, reviews, clickstream)
-│       ├── ingestion/      # CDC Simulator to pull WAL/Updated columns from Postgres
-│       ├── orchestration/  # Lightweight daemon scheduler (scheduler.py)
-│       ├── quality/        # Custom PySpark Data Quality validators
-│       ├── streaming/      # Spark Structured Streaming job (Kafka -> Bronze)
-│       └── utils/          # Spark session builders, Iceberg DDL helpers, schemas
+│   ├── dataone/
+│   │   ├── batch/          # Batch ETL pipeline scripts (bronze_to_silver, SCD Type 2)
+│   │   ├── config.py       # Centralized environment variable and credential management
+│   │   ├── generators/     # Synthetic data generators (orders, reviews, clickstream, campaigns)
+│   │   ├── ingestion/      # CDC Simulator and Kafka producers
+│   │   ├── lineage/        # Reusable internal lineage abstraction and OpenLineage emitter
+│   │   ├── metadata/       # Metadata registry and contract validation logic
+│   │   ├── orchestration/  # Lightweight orchestration daemons (nightly batch and CDC polling)
+│   │   ├── quality/        # Custom PySpark Data Quality validators and gates
+│   │   ├── streaming/      # Spark Structured Streaming job (Kafka -> Bronze Lakehouse)
+│   │   └── utils/          # Spark session builders, Iceberg helpers, schemas, and logging
+│   └── nifi_flows/         # Apache NiFi template flow definitions for API/CSV ingestion
 └── tests/
     ├── conftest.py         # Pytest fixtures for Spark and Iceberg
     └── test_*.py           # Test suites for ETL, SCD2, Quality, and Generators

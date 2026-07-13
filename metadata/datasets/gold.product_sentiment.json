@@ -1,0 +1,7 @@
+{
+  "name": "gold.product_sentiment",
+  "description": "Gold dataset for product_sentiment",
+  "domain": "products",
+  "layer": "gold",
+  "data_classification": "internal"
+}

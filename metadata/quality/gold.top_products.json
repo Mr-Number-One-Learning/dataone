@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.top_products",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

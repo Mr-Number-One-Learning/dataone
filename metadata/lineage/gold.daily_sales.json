@@ -1,0 +1,7 @@
+{
+  "dataset": "gold.daily_sales",
+  "upstream": [
+    "gold.fact_order_items"
+  ],
+  "downstream": []
+}

@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.roas",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

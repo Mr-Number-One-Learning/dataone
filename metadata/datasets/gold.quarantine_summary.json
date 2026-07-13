@@ -1,0 +1,7 @@
+{
+  "name": "gold.quarantine_summary",
+  "description": "Gold dataset for quarantine_summary",
+  "domain": "platform",
+  "layer": "gold",
+  "data_classification": "internal"
+}

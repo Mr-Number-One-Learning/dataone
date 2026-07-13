@@ -1,0 +1,7 @@
+{
+  "name": "silver.customers",
+  "description": "Silver dataset for customers",
+  "domain": "customers",
+  "layer": "silver",
+  "data_classification": "confidential"
+}

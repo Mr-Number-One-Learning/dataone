@@ -1,0 +1,5 @@
+{
+  "dataset": "bronze.orders_cdc",
+  "upstream": [],
+  "downstream": []
+}

@@ -2,6 +2,22 @@
 
 This document outlines the structure, purpose, and schemas of the datasets progressing through the DataOne Lakehouse architecture.
 
+## 🗃️ Metadata Layer & Data Contracts
+
+The platform features a first-class, dynamic Metadata Layer under the `metadata/` directory. Metadata is partitioned into:
+- **`metadata/datasets/`**: Basic dataset identifiers, descriptions, classification, and medallion layer.
+- **`metadata/ownership/`**: Domain, owner, steward, retention policy, SLA, and consumer list.
+- **`metadata/contracts/`**: Concrete schema definition (columns, types, nullability), primary/business keys, partition strategy, and sort order.
+- **`metadata/quality/`**: Expected required columns, value boundaries, and custom validations.
+- **`metadata/lineage/`**: Static upstream and downstream data flow mappings.
+
+### Data Contract Enforcement & Evolution
+Every batch and streaming run validates incoming PySpark DataFrames against these contracts before saving or processing data:
+1. **Schema Evolution Policies**: Evolution is checked according to contract configuration (`allowed_schema_evolution`). For example, under `backward` evolution, adding new nullable columns is allowed, but deleting columns or modifying types is strictly blocked.
+2. **Type Safety & Constraints**: Columns are checked against their declared types, and primary key uniqueness and nullability constraints are dynamically validated.
+3. **Data Quality Quarantine**: Non-conforming rows failing null checks or value boundaries are routed to `quarantine.*` tables (along with a `_quarantine_reason` tag) for audit and triage, while valid data continues downstream.
+
+
 ## 🗂️ Data Lineage & Layers
 
 ### 1. Raw / Source Data
