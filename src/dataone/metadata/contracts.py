@@ -53,7 +53,25 @@ def validate_schema(df_schema: StructType, dataset_name: str) -> None:
             if "TIMESTAMP" in df_type and "TIMESTAMP" in contract_type:
                 continue
             
-            if df_type != contract_type:
+            # Normalize synonyms
+            def normalize(t: str) -> str:
+                return t.replace("INTEGER", "INT").replace("LONG", "BIGINT")
+                
+            df_norm = normalize(df_type)
+            contract_norm = normalize(contract_type)
+            
+            # Allow widening (INT -> BIGINT, FLOAT -> DOUBLE, DECIMAL -> DOUBLE)
+            is_compatible = False
+            if df_norm == contract_norm:
+                is_compatible = True
+            elif df_norm == "INT" and contract_norm == "BIGINT":
+                is_compatible = True
+            elif df_norm == "FLOAT" and contract_norm == "DOUBLE":
+                is_compatible = True
+            elif df_norm.startswith("DECIMAL") and contract_norm in ("DOUBLE", "FLOAT"):
+                is_compatible = True
+                
+            if not is_compatible:
                 msg = f"Type mismatch for column '{col_name}' in dataset '{dataset_name}': expected {contract_type}, got {df_type}"
                 log.error("contracts.validate.type_mismatch", error=msg)
                 raise DataContractViolation(msg)

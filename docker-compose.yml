@@ -288,6 +288,7 @@ services:
     volumes:
       - lakehouse-data:/data/lakehouse
       - ./src:/opt/dataone/src
+      - ./metadata:/opt/dataone/metadata
     mem_limit: "1536m"
     cpus: "1.0"
 
@@ -311,6 +312,7 @@ services:
     volumes:
       - lakehouse-data:/data/lakehouse
       - ./src:/opt/dataone/src
+      - ./metadata:/opt/dataone/metadata
     mem_limit: "6g"
     cpus: "2.0"
 
@@ -518,6 +520,7 @@ services:
       PYTHONPATH: "/opt/dataone/src"
     volumes:
       - ./src:/opt/dataone/src
+      - ./metadata:/opt/dataone/metadata
     entrypoint: ["bash", "-c"]
     command: >
       "pip install --no-cache-dir prefect &&
