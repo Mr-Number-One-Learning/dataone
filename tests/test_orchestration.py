@@ -93,3 +93,28 @@ def test_cdc_poll_flow_calls_init_and_tasks(monkeypatch):
     assert len(poll_calls) == 2
     assert ("customers", "customer_id") in poll_calls
     assert ("orders", "order_id") in poll_calls
+
+
+def test_run_stage_tasks(monkeypatch):
+    """Verifies that individual stage tasks pass the STAGE env variable."""
+    calls = []
+
+    def fake_run(cmd, env=None):
+        calls.append((cmd, env))
+        return _FakeResult(0)
+
+    monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
+
+    nightly_batch.run_ingest_bronze.fn()
+    nightly_batch.run_standardize_silver.fn(start="2026-01-01", end="2026-01-02")
+    
+    assert len(calls) == 2
+    assert calls[0][0] == ["make", "run-batch"]
+    assert calls[0][1]["STAGE"] == "ingest_bronze"
+    assert "START_DATE" not in calls[0][1]
+    
+    assert calls[1][0] == ["make", "run-batch"]
+    assert calls[1][1]["STAGE"] == "standardize_silver"
+    assert calls[1][1]["START_DATE"] == "2026-01-01"
+    assert calls[1][1]["END_DATE"] == "2026-01-02"
+

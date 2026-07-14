@@ -26,7 +26,8 @@ run-batch:
 	  --executor-memory 4000m \
 	  --total-executor-cores 1 \
 	  /opt/dataone/src/dataone/batch/bronze_to_silver.py \
-	  $(if $(START_DATE),--start $(START_DATE) --end $(END_DATE),)
+	  $(if $(START_DATE),--start $(START_DATE) --end $(END_DATE),) \
+	  $(if $(STAGE),--stage $(STAGE),)
 	docker compose --profile core --profile batch stop spark-worker-batch
 
 seed:
