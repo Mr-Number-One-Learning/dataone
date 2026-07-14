@@ -1010,7 +1010,7 @@ def build_quarantine_summary(spark: SparkSession) -> DataFrame:
     campaigns_agg = _agg("campaigns", "start_date")
     reviews_agg = _agg("reviews", "submitted_at")
     customers_agg = _agg("customers", "captured_at")
-    products_agg = _agg("products", "created_at")
+    products_agg = _agg("products", "updated_at")
     clickstream_agg = _agg("clickstream", "ts")
     
     # We aggregate again in case multiple tables have the exact same failure reason on the same date
@@ -1233,7 +1233,7 @@ def main() -> None:
                     "campaigns": campaigns_quality,
                     "customers": None,
                     "orders": None,
-                    "products": products_quality,
+                    "products": None,
                     "fact_order_items": quality_result,
                     "reviews": None,
                     "clickstream": None,

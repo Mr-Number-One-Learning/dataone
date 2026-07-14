@@ -35,11 +35,6 @@
       "nullable": true
     },
     {
-      "name": "created_at",
-      "type": "TIMESTAMP",
-      "nullable": true
-    },
-    {
       "name": "updated_at",
       "type": "TIMESTAMP",
       "nullable": true
