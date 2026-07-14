@@ -21,16 +21,20 @@ def _get_table_dict(dataset_name: str) -> dict:
     }
 
 # Dynamic schemas for backward compatibility
-BRONZE_ORDERS_CDC = _get_table_dict("bronze.orders_cdc")
+BRONZE_ORDERS_CDC  = _get_table_dict("bronze.orders_cdc")
 BRONZE_CLICKSTREAM = _get_table_dict("bronze.clickstream")
 BRONZE_DEAD_LETTERS = _get_table_dict("bronze.dead_letters")
-BRONZE_CAMPAIGNS = _get_table_dict("bronze.campaigns")
-BRONZE_REVIEWS = _get_table_dict("bronze.reviews")
+BRONZE_CAMPAIGNS   = _get_table_dict("bronze.campaigns")
+BRONZE_REVIEWS     = _get_table_dict("bronze.reviews")
+BRONZE_PRODUCTS    = _get_table_dict("bronze.products")
+BRONZE_ORDER_ITEMS = _get_table_dict("bronze.order_items")
 
-SILVER_REVIEWS = _get_table_dict("silver.reviews")
+SILVER_REVIEWS     = _get_table_dict("silver.reviews")
 SILVER_CLICKSTREAM = _get_table_dict("silver.clickstream")
-SILVER_CUSTOMERS = _get_table_dict("silver.customers")
-SILVER_ORDERS = _get_table_dict("silver.orders")
+SILVER_CUSTOMERS   = _get_table_dict("silver.customers")
+SILVER_ORDERS      = _get_table_dict("silver.orders")
+SILVER_PRODUCTS    = _get_table_dict("silver.products")
+SILVER_ORDER_ITEMS = _get_table_dict("silver.order_items")
 
 GOLD_DAILY_SALES = _get_table_dict("gold.daily_sales")
 GOLD_TOP_PRODUCTS = _get_table_dict("gold.top_products")
@@ -50,23 +54,31 @@ GOLD_QUARANTINE_SUMMARY = _get_table_dict("gold.quarantine_summary")
 GOLD_QUALITY_GATE_SUMMARY = _get_table_dict("gold.quality_gate_summary")
 
 QUARANTINE_FACT_ORDER_ITEMS = _get_table_dict("quarantine.fact_order_items")
-QUARANTINE_CAMPAIGNS = _get_table_dict("quarantine.campaigns")
-QUARANTINE_REVIEWS = _get_table_dict("quarantine.reviews")
-QUARANTINE_ORDERS = _get_table_dict("quarantine.orders")
-QUARANTINE_CUSTOMERS = _get_table_dict("quarantine.customers")
-QUARANTINE_PRODUCTS = _get_table_dict("quarantine.products")
+QUARANTINE_CAMPAIGNS   = _get_table_dict("quarantine.campaigns")
+QUARANTINE_REVIEWS     = _get_table_dict("quarantine.reviews")
+QUARANTINE_ORDERS      = _get_table_dict("quarantine.orders")
+QUARANTINE_CUSTOMERS   = _get_table_dict("quarantine.customers")
+QUARANTINE_PRODUCTS    = _get_table_dict("quarantine.products")
 QUARANTINE_CLICKSTREAM = _get_table_dict("quarantine.clickstream")
+QUARANTINE_ORDER_ITEMS = _get_table_dict("quarantine.order_items")
 
 ALL_TABLES = [
+    # Bronze — raw ingest layer
     BRONZE_ORDERS_CDC,
     BRONZE_CLICKSTREAM,
     BRONZE_CAMPAIGNS,
     BRONZE_REVIEWS,
     BRONZE_DEAD_LETTERS,
+    BRONZE_PRODUCTS,
+    BRONZE_ORDER_ITEMS,
+    # Silver — conformed / quality-gated layer
     SILVER_REVIEWS,
     SILVER_CLICKSTREAM,
     SILVER_CUSTOMERS,
     SILVER_ORDERS,
+    SILVER_PRODUCTS,
+    SILVER_ORDER_ITEMS,
+    # Gold — analytical marts
     GOLD_DIM_CUSTOMER,
     GOLD_FACT_ORDER_ITEMS,
     GOLD_DAILY_SALES,
@@ -83,6 +95,7 @@ ALL_TABLES = [
     GOLD_ROAS,
     GOLD_QUARANTINE_SUMMARY,
     GOLD_QUALITY_GATE_SUMMARY,
+    # Quarantine
     QUARANTINE_FACT_ORDER_ITEMS,
     QUARANTINE_CAMPAIGNS,
     QUARANTINE_REVIEWS,
@@ -90,6 +103,7 @@ ALL_TABLES = [
     QUARANTINE_CUSTOMERS,
     QUARANTINE_PRODUCTS,
     QUARANTINE_CLICKSTREAM,
+    QUARANTINE_ORDER_ITEMS,
 ]
 
 

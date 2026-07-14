@@ -6,6 +6,9 @@ Creates the folders:
   - metadata/contracts/
   - metadata/quality/
   - metadata/lineage/
+
+Re-running this script is safe: existing files are overwritten with the latest definitions.
+New tables added to ALL_TABLES in schemas.py are automatically picked up.
 """
 from __future__ import annotations
 
@@ -49,7 +52,7 @@ def get_owner(domain: str) -> str:
 def get_classification(layer: str, table_name: str) -> str:
     if layer == "quarantine":
         return "restricted"
-    if any(k in table_name for k in ["customer", "address", "email", "order"]):
+    if any(k in table_name for k in ["customer", "address", "email", "order", "order_item"]):
         return "confidential"
     return "internal"
 
@@ -64,7 +67,11 @@ def get_primary_keys(table_name: str) -> list[str]:
         return ["date_key"]
     if table_name == "fact_order_items":
         return ["sk_order_id"]
-    
+    if table_name in ("order_items",):
+        return ["order_item_id"]
+    if table_name == "products":
+        return ["product_id"]
+
     keys = ["order_id", "customer_id", "product_id", "campaign_id", "review_id", "event_id", "session_id"]
     for k in keys:
         if table_name.startswith(k.split("_")[0]):
@@ -72,30 +79,47 @@ def get_primary_keys(table_name: str) -> list[str]:
     return []
 
 def get_required_columns(name: str) -> list[str]:
-    # Taken from bronze_to_silver.py quality gate requirements
+    # Driven by the quality gate rules in metadata/quality/ and bronze_to_silver.py
     reqs = {
-        "bronze.campaigns": ["campaign_id", "name", "start_date", "end_date"],
-        "silver.customers": ["customer_id"],
-        "silver.orders": ["order_id", "customer_id", "order_date"],
+        "bronze.campaigns":      ["campaign_id", "name", "start_date", "end_date"],
+        "bronze.products":       ["product_id", "sku", "ingested_at"],
+        "bronze.order_items":    ["order_item_id", "order_id", "ingested_at"],
+        "silver.customers":      ["customer_id"],
+        "silver.orders":         ["order_id", "customer_id", "order_date"],
+        "silver.products":       ["product_id", "sku"],
+        "silver.order_items":    ["order_item_id", "order_id"],
         "gold.fact_order_items": ["order_id", "customer_id", "product_id"],
-        "silver.reviews": ["review_id", "product_id", "rating"],
-        "silver.clickstream": ["session_id", "event_type", "ts"]
+        "silver.reviews":        ["review_id", "product_id", "rating"],
+        "silver.clickstream":    ["session_id", "event_type", "ts"]
     }
-    # For others, default to primary keys if any, otherwise first column
     return reqs.get(name, [])
 
 def get_column_bounds(name: str) -> dict[str, list]:
-    # Taken from bronze_to_silver.py bounds validations
+    # Driven by the quality gate rules in metadata/quality/ and bronze_to_silver.py
     bounds = {
         "bronze.campaigns": {
-            "budget": [0, None],
-            "spend": [0, None],
-            "clicks": [0, None],
+            "budget":      [0, None],
+            "spend":       [0, None],
+            "clicks":      [0, None],
             "conversions": [0, None]
+        },
+        "bronze.products": {
+            "unit_price": [0, None]
+        },
+        "bronze.order_items": {
+            "quantity":   [1, None],
+            "unit_price": [0, None]
+        },
+        "silver.products": {
+            "unit_price": [0, None]
+        },
+        "silver.order_items": {
+            "quantity":   [1, None],
+            "unit_price": [0, None]
         },
         "gold.fact_order_items": {
             "unit_price": [0, None],
-            "quantity": [1, None]
+            "quantity":   [1, None]
         },
         "silver.reviews": {
             "rating": [1, 5]
@@ -104,61 +128,101 @@ def get_column_bounds(name: str) -> dict[str, list]:
     return bounds.get(name, {})
 
 def get_lineage(name: str) -> tuple[list[str], list[str]]:
-    # Dynamic lineage maps based on data flow
-    upstreams = []
-    downstreams = []
-    
-    if name == "silver.orders":
-        upstreams = ["bronze.orders_cdc"]
+    """Returns (upstream_datasets, downstream_datasets) for a given dataset name.
+
+    All Gold mart lineage now reflects the Medallion-compliant pipeline:
+    products and order_items flow through Bronze -> Silver -> Gold,
+    not directly from postgres.*.
+    """
+    upstreams: list[str] = []
+    downstreams: list[str] = []
+
+    # ── Bronze layer ─────────────────────────────────────────────────────────
+    if name == "bronze.orders_cdc":
+        upstreams  = ["kafka.orders"]
+        downstreams = ["silver.customers", "silver.orders"]
+    elif name == "bronze.clickstream":
+        upstreams  = ["kafka.clickstream"]
+        downstreams = ["silver.clickstream"]
+    elif name == "bronze.campaigns":
+        upstreams  = ["nifi.campaigns"]
+        downstreams = ["gold.dim_campaign", "gold.campaign_effectiveness", "gold.roas"]
+    elif name == "bronze.reviews":
+        upstreams  = ["mongodb.reviews"]
+        downstreams = ["silver.reviews"]
+    elif name == "bronze.products":
+        upstreams  = ["postgres.products"]
+        downstreams = ["silver.products"]
+    elif name == "bronze.order_items":
+        upstreams  = ["postgres.order_items"]
+        downstreams = ["silver.order_items"]
+
+    # ── Silver layer ─────────────────────────────────────────────────────────
+    elif name == "silver.orders":
+        upstreams  = ["bronze.orders_cdc"]
         downstreams = ["gold.fact_order_items"]
     elif name == "silver.customers":
-        upstreams = ["bronze.orders_cdc"]
+        upstreams  = ["bronze.orders_cdc"]
         downstreams = ["gold.dim_customer"]
     elif name == "silver.clickstream":
-        upstreams = ["bronze.clickstream"]
+        upstreams  = ["bronze.clickstream"]
         downstreams = ["gold.conversion_rate", "gold.funnel_conversion"]
     elif name == "silver.reviews":
-        upstreams = ["bronze.reviews"]
+        upstreams  = ["bronze.reviews"]
         downstreams = ["gold.product_sentiment"]
+    elif name == "silver.products":
+        upstreams  = ["bronze.products"]
+        downstreams = ["gold.dim_product", "gold.fact_order_items",
+                       "gold.top_products", "gold.product_sentiment"]
+    elif name == "silver.order_items":
+        upstreams  = ["bronze.order_items"]
+        downstreams = ["gold.fact_order_items"]
+
+    # ── Gold layer ───────────────────────────────────────────────────────────
     elif name == "gold.dim_customer":
-        upstreams = ["silver.customers"]
+        upstreams  = ["silver.customers"]
         downstreams = ["gold.fact_order_items", "gold.customer_clv"]
     elif name == "gold.fact_order_items":
-        upstreams = ["silver.orders", "gold.dim_customer", "postgres.order_items", "postgres.products"]
-        downstreams = ["gold.daily_sales", "gold.top_products", "gold.customer_segments", "gold.customer_clv"]
+        # Medallion-compliant: reads from Silver, not Postgres
+        upstreams  = ["silver.orders", "silver.order_items", "silver.products", "gold.dim_customer"]
+        downstreams = ["gold.daily_sales", "gold.top_products",
+                       "gold.customer_segments", "gold.customer_clv"]
     elif name == "gold.dim_product":
-        upstreams = ["postgres.products"]
+        upstreams  = ["silver.products"]
     elif name == "gold.dim_campaign":
-        upstreams = ["bronze.campaigns"]
+        upstreams  = ["bronze.campaigns"]
     elif name == "gold.daily_sales":
-        upstreams = ["gold.fact_order_items"]
+        upstreams  = ["gold.fact_order_items"]
     elif name == "gold.top_products":
-        upstreams = ["gold.fact_order_items", "postgres.products"]
+        upstreams  = ["gold.fact_order_items", "silver.products"]
     elif name == "gold.customer_segments":
-        upstreams = ["gold.fact_order_items", "gold.dim_customer"]
+        upstreams  = ["gold.fact_order_items", "gold.dim_customer"]
     elif name == "gold.conversion_rate":
-        upstreams = ["silver.clickstream"]
+        upstreams  = ["silver.clickstream"]
     elif name == "gold.campaign_effectiveness":
-        upstreams = ["bronze.campaigns"]
+        upstreams  = ["bronze.campaigns"]
     elif name == "gold.product_sentiment":
-        upstreams = ["silver.reviews", "postgres.products"]
+        upstreams  = ["silver.reviews", "silver.products"]
     elif name == "gold.customer_clv":
-        upstreams = ["gold.fact_order_items", "gold.dim_customer"]
+        upstreams  = ["gold.fact_order_items", "gold.dim_customer"]
     elif name == "gold.funnel_conversion":
-        upstreams = ["silver.clickstream"]
+        upstreams  = ["silver.clickstream"]
     elif name == "gold.roas":
-        upstreams = ["gold.fact_order_items", "bronze.campaigns"]
-    
-    # Generic mapping fallback
-    if name.startswith("quarantine."):
+        upstreams  = ["gold.fact_order_items", "bronze.campaigns"]
+
+    # ── Quarantine layer ─────────────────────────────────────────────────────
+    elif name.startswith("quarantine."):
         tbl = name.split(".")[1]
         if tbl == "fact_order_items":
             upstreams = ["gold.fact_order_items"]
-        elif tbl in ["campaigns", "reviews", "clickstream"]:
+        elif tbl in ("campaigns", "reviews", "clickstream"):
             upstreams = [f"bronze.{tbl}"]
+        elif tbl in ("products", "order_items"):
+            # Quality gate is applied after Silver transformation
+            upstreams = [f"silver.{tbl}"]
         else:
             upstreams = [f"silver.{tbl}"]
-            
+
     return upstreams, downstreams
 
 def main():
@@ -209,10 +273,16 @@ def main():
             })
             
         partition_by = t.get("partition_by")
-        if name == "bronze.reviews":
-            partition_by = ["days(ingested_at)"]
-        elif name == "silver.reviews":
-            partition_by = ["days(submitted_at)"]
+        # Partition specs for tables managed by the registry (not the contract JSON generator)
+        _partition_overrides: dict[str, list[str] | None] = {
+            "bronze.reviews":      ["days(ingested_at)"],
+            "bronze.order_items":  ["days(ingested_at)"],
+            "silver.reviews":      ["days(submitted_at)"],
+            "silver.products":     ["days(updated_at)"],
+            "silver.order_items":  ["bucket(16, order_id)"],
+        }
+        if name in _partition_overrides:
+            partition_by = _partition_overrides[name]
 
         contract_meta = {
             "dataset": name,

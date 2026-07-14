@@ -1,0 +1,7 @@
+{
+  "name": "bronze.products",
+  "description": "Bronze dataset for products",
+  "domain": "products",
+  "layer": "bronze",
+  "data_classification": "internal"
+}

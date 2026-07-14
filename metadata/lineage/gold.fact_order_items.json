@@ -2,9 +2,9 @@
   "dataset": "gold.fact_order_items",
   "upstream": [
     "silver.orders",
-    "gold.dim_customer",
-    "postgres.order_items",
-    "postgres.products"
+    "silver.order_items",
+    "silver.products",
+    "gold.dim_customer"
   ],
   "downstream": [
     "gold.daily_sales",

@@ -1,0 +1,12 @@
+{
+  "dataset": "silver.products",
+  "upstream": [
+    "bronze.products"
+  ],
+  "downstream": [
+    "gold.dim_product",
+    "gold.fact_order_items",
+    "gold.top_products",
+    "gold.product_sentiment"
+  ]
+}

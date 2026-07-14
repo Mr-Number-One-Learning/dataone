@@ -1,10 +1,10 @@
 """
 Nightly Spark batch job: bronze -> silver/gold. Ingests NiFi-staged campaign
-files into bronze, joins orders/customers (from Kafka CDC via the lakehouse)
-with order_items/products (direct JDBC from Postgres — see schemas.py for
-why those two have no CDC path), applies window functions, runs the SCD2
-customer-dimension merge, runs the data-quality gate, writes curated Iceberg
-tables, and loads the business marts into ClickHouse.
+files, MongoDB reviews, and full/incremental snapshots of the Postgres products
+and order_items tables into Bronze Iceberg; promotes all Bronze tables through
+Silver quality gates; applies window functions, runs the SCD2 customer-dimension
+merge, runs the data-quality gate, writes curated Iceberg tables, and loads the
+business marts into ClickHouse.
 
 Run (inside the spark-worker-batch container, started via `make batch`):
     spark-submit bronze_to_silver.py [--start DATE --end DATE]
@@ -207,6 +207,89 @@ def ingest_reviews_to_bronze(spark: SparkSession) -> int:
         if count:
             df.writeTo(table_identifier("bronze", "reviews")).append()
         log.info("ingest_reviews_to_bronze.done", rows=count, watermark=str(watermark))
+        return count
+    finally:
+        df.unpersist()
+
+
+def ingest_products_to_bronze(spark: SparkSession) -> int:
+    """Full daily snapshot of the products dimension table into bronze.products.
+
+    Products is a small, mutable reference table (updated prices, names, categories).
+    A full overwrite snapshot is correct: it keeps Bronze storage bounded and ensures
+    the Silver SCD1 merge sees the full current state, not just deltas.
+
+    Write mode is createOrReplace (Iceberg atomic overwrite), which is safe because:
+    - The table is small (thousands of rows, not millions).
+    - Downstream Silver reads use a merge — not dependent on Bronze history.
+    - A failed overwrite leaves the previous snapshot intact (Iceberg atomic commit).
+    """
+    df = (
+        read_postgres_table(spark, "products")
+        .withColumn("ingested_at", F.current_timestamp())
+    )
+    df = df.cache()
+    try:
+        count = df.count()
+        if count:
+            df.writeTo(table_identifier("bronze", "products")).createOrReplace()
+        log.info("ingest_products_to_bronze.done", rows=count)
+        return count
+    finally:
+        df.unpersist()
+
+
+def ingest_order_items_to_bronze(spark: SparkSession) -> int:
+    """Watermark-incremental JDBC extract of order_items into bronze.order_items.
+
+    order_items is append-only by business logic (a placed order line item is never
+    modified or deleted). We track MAX(order_item_id) already in Bronze as a watermark
+    and pull only strictly new rows — identical to how ingest_reviews_to_bronze
+    watermarks on submitted_at.
+
+    The partitioned JDBC read uses order_item_id as the partition column with
+    lower_bound=watermark+1 and upper_bound=postgres_max_id to spread the load
+    across Spark executors without skewing all overflow rows into one partition.
+
+    IMPORTANT: The explicit filter(order_item_id > watermark) after the JDBC read is
+    intentional — Spark JDBC lowerBound/upperBound are partition-splitting hints, not
+    WHERE clause filters. Without this guard, rows <= watermark can appear in the result
+    set and cause duplicate Bronze rows on re-runs.
+    """
+    watermark = 0
+    if spark.catalog.tableExists(table_identifier("bronze", "order_items")):
+        result = (
+            spark.read.format("iceberg")
+            .load(table_identifier("bronze", "order_items"))
+            .agg(F.max("order_item_id"))
+            .collect()[0][0]
+        )
+        if result is not None:
+            watermark = int(result)
+
+    upper = _postgres_max_id("order_items", "order_item_id")
+    if upper <= watermark:
+        log.info("ingest_order_items_to_bronze.no_new_rows", watermark=watermark)
+        return 0
+
+    df = (
+        read_postgres_table(
+            spark,
+            "order_items",
+            partition_col="order_item_id",
+            lower_bound=watermark + 1,
+            upper_bound=upper,
+            num_partitions=8,
+        )
+        .filter(F.col("order_item_id") > watermark)  # guard: JDBC bounds are hints, not filters
+        .withColumn("ingested_at", F.current_timestamp())
+    )
+    df = df.cache()
+    try:
+        count = df.count()
+        if count:
+            df.writeTo(table_identifier("bronze", "order_items")).append()
+        log.info("ingest_order_items_to_bronze.done", rows=count, watermark=watermark, upper=upper)
         return count
     finally:
         df.unpersist()
@@ -433,6 +516,52 @@ def build_silver_reviews(bronze_reviews_df: DataFrame) -> DataFrame:
         .drop("_rn")
         .withColumn("sentiment_score", _sentiment_udf(F.col("body")))
     )
+
+def build_silver_products(bronze_df: DataFrame) -> DataFrame:
+    """Conforms the raw Bronze products snapshot to the silver.products contract.
+
+    Drops audit-only columns (ingested_at, created_at) not needed downstream.
+    Casts unit_price to DECIMAL to match the Iceberg schema contract.
+    No deduplication needed — bronze.products is a full overwrite snapshot so
+    there is exactly one row per product_id per run.
+    """
+    return (
+        bronze_df
+        .select(
+            F.col("product_id").cast("long"),
+            F.col("sku"),
+            F.col("name"),
+            F.col("category"),
+            F.col("unit_price").cast("decimal(10,2)"),
+            F.to_timestamp("updated_at").alias("updated_at"),
+        )
+        .filter(F.col("product_id").isNotNull())
+        .filter(F.col("sku").isNotNull())
+    )
+
+
+def build_silver_order_items(bronze_df: DataFrame) -> DataFrame:
+    """Conforms raw Bronze order_items to the silver.order_items contract.
+
+    Deduplicates on order_item_id keeping the latest ingested_at in case of a
+    Bronze re-ingestion overlap at a watermark boundary. Drops ingested_at since
+    Silver represents business state, not the ingestion audit trail. Uses the
+    same _latest_per_key() window pattern as parse_customers_from_cdc() and
+    build_silver_reviews() for consistency across the codebase.
+    """
+    return (
+        _latest_per_key(bronze_df, key_col="order_item_id", order_col="ingested_at")
+        .select(
+            F.col("order_item_id").cast("long"),
+            F.col("order_id").cast("long"),
+            F.col("product_id").cast("long"),
+            F.col("quantity").cast("int"),
+            F.col("unit_price").cast("decimal(10,2)"),
+        )
+        .filter(F.col("order_item_id").isNotNull())
+        .filter(F.col("order_id").isNotNull())
+    )
+
 
 def build_product_sentiment(silver_reviews_df: DataFrame, products_df: DataFrame) -> DataFrame:
     """Builds the product sentiment summary mart.
@@ -917,13 +1046,19 @@ def main() -> None:
         with LineageTracker("bronze_to_silver.ingest_bronze", args.start, args.end) as tracker:
             tracker.add_input("mongodb.reviews")
             tracker.add_input("nifi.campaigns")
+            tracker.add_input("postgres.products")
+            tracker.add_input("postgres.order_items")
             try:
                 spark = build_spark_session("dataone-batch-ingest-bronze")
                 bootstrap_lakehouse(spark)
                 campaigns_files = ingest_campaigns_to_bronze(spark)
                 reviews_count = ingest_reviews_to_bronze(spark)
+                products_count = ingest_products_to_bronze(spark)
+                order_items_count = ingest_order_items_to_bronze(spark)
                 tracker.add_output("bronze.campaigns", records_written=campaigns_files)
                 tracker.add_output("bronze.reviews", records_written=reviews_count)
+                tracker.add_output("bronze.products", records_written=products_count)
+                tracker.add_output("bronze.order_items", records_written=order_items_count)
                 log.info("bronze_to_silver.ingest_bronze.done")
             except Exception as exc:
                 log.error("bronze_to_silver.ingest_bronze.failed", error=str(exc), exc_info=True)
@@ -938,6 +1073,8 @@ def main() -> None:
             tracker.add_input("bronze.clickstream")
             tracker.add_input("bronze.campaigns")
             tracker.add_input("bronze.reviews")
+            tracker.add_input("bronze.products")
+            tracker.add_input("bronze.order_items")
             try:
                 spark = build_spark_session("dataone-batch-standardize-silver")
                 bootstrap_lakehouse(spark)
@@ -1007,6 +1144,23 @@ def main() -> None:
                 write_append(final_clickstream_quarantine, "quarantine", "clickstream")
                 tracker.add_output("silver.clickstream", records_written=silver_clickstream_passed.count(), records_failed=final_clickstream_quarantine.count())
                 silver_clickstream_passed.unpersist()
+
+                # --- Products → silver.products (SCD Type 1 upsert) ---
+                bronze_products_df = spark.read.format("iceberg").load(table_identifier("bronze", "products"))
+                products_silver_df = build_silver_products(bronze_products_df)
+                products_quality   = run_quality_gate(products_silver_df, dataset_name="quarantine.products")
+                merge_into_silver(spark, products_quality.passed_df, "products", "product_id")
+                write_append(products_quality.quarantined_df, "quarantine", "products")
+                tracker.add_output("silver.products", records_written=products_quality.passed_count, records_failed=products_quality.quarantined_count)
+
+                # --- Order Items → silver.order_items (insert-only merge) ---
+                bronze_order_items_df   = spark.read.format("iceberg").load(table_identifier("bronze", "order_items"))
+                order_items_silver_df   = build_silver_order_items(bronze_order_items_df)
+                order_items_quality     = run_quality_gate(order_items_silver_df, dataset_name="quarantine.order_items")
+                merge_into_silver(spark, order_items_quality.passed_df, "order_items", "order_item_id")
+                write_append(order_items_quality.quarantined_df, "quarantine", "order_items")
+                tracker.add_output("silver.order_items", records_written=order_items_quality.passed_count, records_failed=order_items_quality.quarantined_count)
+
                 log.info("bronze_to_silver.standardize_silver.done")
             except Exception as exc:
                 log.error("bronze_to_silver.standardize_silver.failed", error=str(exc), exc_info=True)
@@ -1021,9 +1175,9 @@ def main() -> None:
             tracker.add_input("silver.orders")
             tracker.add_input("silver.reviews")
             tracker.add_input("silver.clickstream")
+            tracker.add_input("silver.order_items")
+            tracker.add_input("silver.products")
             tracker.add_input("bronze.campaigns")
-            tracker.add_input("postgres.order_items")
-            tracker.add_input("postgres.products")
             try:
                 spark = build_spark_session("dataone-batch-model-gold")
                 bootstrap_lakehouse(spark)
@@ -1050,21 +1204,9 @@ def main() -> None:
                 )
                 customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
 
-                order_items_df = read_postgres_table(
-                    spark,
-                    "order_items",
-                    partition_col="order_item_id",
-                    lower_bound=1,
-                    upper_bound=_postgres_max_id("order_items", "order_item_id"),
-                    num_partitions=8,
-                )
-                products_df = read_postgres_table(spark, "products")
-                products_quality = run_quality_gate(
-                    products_df,
-                    dataset_name="quarantine.products"
-                )
-                products_df = products_quality.passed_df
-                write_append(products_quality.quarantined_df, "quarantine", "products")
+                # Read from Silver — no direct Postgres connection
+                order_items_df = spark.read.format("iceberg").load(table_identifier("silver", "order_items"))
+                products_df    = spark.read.format("iceberg").load(table_identifier("silver", "products"))
                 
                 fact_order_items_df = build_fact_order_items(orders_silver_df, order_items_df, products_df, customer_dim_full_df).withColumn(
                     "sk_order_id", F.md5(F.concat_ws("||", F.lit("postgres"), F.col("order_id").cast("string"), F.col("product_id").cast("string")))
@@ -1166,8 +1308,8 @@ def main() -> None:
             tracker.add_input("bronze.clickstream")
             tracker.add_input("bronze.campaigns")
             tracker.add_input("bronze.reviews")
-            tracker.add_input("postgres.order_items")
-            tracker.add_input("postgres.products")
+            tracker.add_input("postgres.products")     # ingested to bronze.products
+            tracker.add_input("postgres.order_items")  # ingested to bronze.order_items
             tracker.add_input("mongodb.reviews")
             tracker.add_input("nifi.campaigns")
             
@@ -1176,6 +1318,8 @@ def main() -> None:
                 bootstrap_lakehouse(spark)
                 ingest_campaigns_to_bronze(spark)
                 ingest_reviews_to_bronze(spark)
+                ingest_products_to_bronze(spark)
+                ingest_order_items_to_bronze(spark)
 
                 bronze = read_bronze_tables(spark, args.start, args.end)
 
@@ -1219,21 +1363,25 @@ def main() -> None:
                 )
                 customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
 
-                order_items_df = read_postgres_table(
-                    spark,
-                    "order_items",
-                    partition_col="order_item_id",
-                    lower_bound=1,
-                    upper_bound=_postgres_max_id("order_items", "order_item_id"),
-                    num_partitions=8,
-                )
-                products_df = read_postgres_table(spark, "products")
-                products_quality = run_quality_gate(
-                    products_df,
-                    dataset_name="quarantine.products"
-                )
-                products_df = products_quality.passed_df
+                # --- Products → silver.products (SCD Type 1 upsert) ---
+                bronze_products_df = spark.read.format("iceberg").load(table_identifier("bronze", "products"))
+                products_silver_df = build_silver_products(bronze_products_df)
+                products_quality   = run_quality_gate(products_silver_df, dataset_name="quarantine.products")
+                merge_into_silver(spark, products_quality.passed_df, "products", "product_id")
                 write_append(products_quality.quarantined_df, "quarantine", "products")
+                tracker.add_output("silver.products", records_written=products_quality.passed_count, records_failed=products_quality.quarantined_count)
+
+                # --- Order Items → silver.order_items (insert-only merge) ---
+                bronze_order_items_df = spark.read.format("iceberg").load(table_identifier("bronze", "order_items"))
+                order_items_silver_df = build_silver_order_items(bronze_order_items_df)
+                order_items_quality   = run_quality_gate(order_items_silver_df, dataset_name="quarantine.order_items")
+                merge_into_silver(spark, order_items_quality.passed_df, "order_items", "order_item_id")
+                write_append(order_items_quality.quarantined_df, "quarantine", "order_items")
+                tracker.add_output("silver.order_items", records_written=order_items_quality.passed_count, records_failed=order_items_quality.quarantined_count)
+
+                # Read from Silver — no direct Postgres connection in Gold
+                order_items_df = spark.read.format("iceberg").load(table_identifier("silver", "order_items"))
+                products_df    = spark.read.format("iceberg").load(table_identifier("silver", "products"))
                 
                 fact_order_items_df = build_fact_order_items(orders_silver_df, order_items_df, products_df, customer_dim_full_df).withColumn(
                     "sk_order_id", F.md5(F.concat_ws("||", F.lit("postgres"), F.col("order_id").cast("string"), F.col("product_id").cast("string")))

@@ -1,13 +1,12 @@
 {
-  "dataset": "bronze.orders_cdc",
+  "dataset": "silver.order_items",
   "domain": "orders",
   "owner": "Orders Platform Team",
   "steward": "Data Platform Team",
-  "retention_policy": "1 year",
+  "retention_policy": "7 years",
   "sla": "99.9% fresh within 2 hours of ingestion",
-  "refresh_frequency": "continuous",
+  "refresh_frequency": "daily",
   "consumers": [
-    "silver.customers",
-    "silver.orders"
+    "gold.fact_order_items"
   ]
 }

@@ -107,14 +107,25 @@ def test_run_stage_tasks(monkeypatch):
 
     nightly_batch.run_ingest_bronze.fn()
     nightly_batch.run_standardize_silver.fn(start="2026-01-01", end="2026-01-02")
-    
-    assert len(calls) == 2
+    nightly_batch.run_model_gold.fn()
+    nightly_batch.run_clickhouse_sync.fn(start="2026-01-01", end="2026-01-02")
+
+    assert len(calls) == 4
+
     assert calls[0][0] == ["make", "run-batch"]
     assert calls[0][1]["STAGE"] == "ingest_bronze"
     assert "START_DATE" not in calls[0][1]
-    
+
     assert calls[1][0] == ["make", "run-batch"]
     assert calls[1][1]["STAGE"] == "standardize_silver"
     assert calls[1][1]["START_DATE"] == "2026-01-01"
     assert calls[1][1]["END_DATE"] == "2026-01-02"
 
+    assert calls[2][0] == ["make", "run-batch"]
+    assert calls[2][1]["STAGE"] == "model_gold"
+    assert "START_DATE" not in calls[2][1]
+
+    assert calls[3][0] == ["make", "run-batch"]
+    assert calls[3][1]["STAGE"] == "sync_clickhouse"
+    assert calls[3][1]["START_DATE"] == "2026-01-01"
+    assert calls[3][1]["END_DATE"] == "2026-01-02"

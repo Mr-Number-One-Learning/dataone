@@ -1,5 +1,9 @@
 {
   "dataset": "bronze.clickstream",
-  "upstream": [],
-  "downstream": []
+  "upstream": [
+    "kafka.clickstream"
+  ],
+  "downstream": [
+    "silver.clickstream"
+  ]
 }

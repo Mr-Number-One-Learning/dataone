@@ -27,3 +27,19 @@ def test_no_duplicate_layer_table_pairs():
 def test_every_table_has_at_least_one_column():
     for t in schemas.ALL_TABLES:
         assert len(t["columns"]) > 0, f"{t['layer']}.{t['table']} has no columns"
+
+
+def test_new_tables_registered_in_all_tables():
+    """Verifies all five new tables (bronze.products, bronze.order_items,
+    silver.products, silver.order_items, quarantine.order_items) introduced for
+    the Medallion-compliant Postgres migration appear in ALL_TABLES."""
+    all_keys = {(t["layer"], t["table"]) for t in schemas.ALL_TABLES}
+    expected = {
+        ("bronze", "products"),
+        ("bronze", "order_items"),
+        ("silver", "products"),
+        ("silver", "order_items"),
+        ("quarantine", "order_items"),
+    }
+    missing = expected - all_keys
+    assert not missing, f"Tables missing from ALL_TABLES: {missing}"

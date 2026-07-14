@@ -2,7 +2,7 @@
   "dataset": "gold.product_sentiment",
   "upstream": [
     "silver.reviews",
-    "postgres.products"
+    "silver.products"
   ],
   "downstream": []
 }

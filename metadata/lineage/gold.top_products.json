@@ -2,7 +2,7 @@
   "dataset": "gold.top_products",
   "upstream": [
     "gold.fact_order_items",
-    "postgres.products"
+    "silver.products"
   ],
   "downstream": []
 }

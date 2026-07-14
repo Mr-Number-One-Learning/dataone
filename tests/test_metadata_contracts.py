@@ -114,3 +114,48 @@ def test_lineage_tracker_records_runs(monkeypatch):
     assert emitted_events[0]["eventType"] == "START"
     assert emitted_events[1]["eventType"] == "COMPLETE"
     assert emitted_events[0]["job"]["name"] == "test_job"
+
+
+@pytest.mark.parametrize("dataset", [
+    "bronze.products",
+    "bronze.order_items",
+    "silver.products",
+    "silver.order_items",
+])
+def test_new_bronze_silver_contracts_are_loadable(dataset):
+    """Verifies that all four new contracts introduced for the Postgres
+    products/order_items Medallion migration are present, valid JSON, and
+    contain at least one column definition."""
+    registry = get_registry()
+    contract = registry.get_contract(dataset)
+    assert contract is not None, f"Contract not found: {dataset}"
+    assert contract["dataset"] == dataset
+    assert "columns" in contract
+    assert len(contract["columns"]) > 0, f"{dataset} contract has no columns"
+
+
+def test_new_contracts_primary_keys():
+    """silver.products and silver.order_items must declare primary_keys."""
+    registry = get_registry()
+    for dataset in ("silver.products", "silver.order_items"):
+        contract = registry.get_contract(dataset)
+        assert "primary_keys" in contract, f"{dataset} missing primary_keys"
+        assert len(contract["primary_keys"]) > 0
+
+
+def test_bronze_products_has_ingested_at():
+    """bronze.products must include the ingested_at audit column."""
+    registry = get_registry()
+    contract = registry.get_contract("bronze.products")
+    col_names = [col["name"] for col in contract["columns"]]
+    assert "ingested_at" in col_names
+
+
+def test_bronze_order_items_has_ingested_at_and_partition():
+    """bronze.order_items must include ingested_at and a partition spec."""
+    registry = get_registry()
+    contract = registry.get_contract("bronze.order_items")
+    col_names = [col["name"] for col in contract["columns"]]
+    assert "ingested_at" in col_names
+    assert "partition_by" in contract
+    assert len(contract["partition_by"]) > 0

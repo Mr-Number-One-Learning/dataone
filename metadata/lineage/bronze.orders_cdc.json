@@ -1,5 +1,10 @@
 {
   "dataset": "bronze.orders_cdc",
-  "upstream": [],
-  "downstream": []
+  "upstream": [
+    "kafka.orders"
+  ],
+  "downstream": [
+    "silver.customers",
+    "silver.orders"
+  ]
 }

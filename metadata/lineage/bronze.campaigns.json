@@ -1,5 +1,11 @@
 {
   "dataset": "bronze.campaigns",
-  "upstream": [],
-  "downstream": []
+  "upstream": [
+    "nifi.campaigns"
+  ],
+  "downstream": [
+    "gold.dim_campaign",
+    "gold.campaign_effectiveness",
+    "gold.roas"
+  ]
 }
