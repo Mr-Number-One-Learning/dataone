@@ -155,3 +155,86 @@ def test_run_stage_tasks(monkeypatch):
     assert calls[3][1]["PARENT_RUN_ID"] == "id4"
     assert calls[3][1]["PARENT_JOB_NAME"] == "job4"
 
+
+def test_publish_run_summary(monkeypatch):
+    """Verifies that publish_run_summary queries the DB and creates a markdown artifact in Prefect."""
+    import datetime
+    db_calls = []
+    artifact_calls = []
+
+    # Mock cursor and connection
+    class FakeCursor:
+        def execute(self, query, params=None):
+            db_calls.append((query, params))
+
+        def fetchall(self):
+            return [
+                (
+                    "bronze_to_silver.ingest_bronze",
+                    "success",
+                    1000,
+                    0,
+                    None,
+                    datetime.datetime.now(datetime.timezone.utc),
+                ),
+                (
+                    "bronze_to_silver.standardize_silver",
+                    "failed",
+                    900,
+                    100,
+                    "Some schema violation",
+                    datetime.datetime.now(datetime.timezone.utc),
+                ),
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    class FakeConn:
+        def cursor(self):
+            return FakeCursor()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    # Mock psycopg2 and prefect artifact API
+    monkeypatch.setattr(psycopg2, "connect", lambda dsn: FakeConn())
+
+    def fake_create_markdown_artifact(key, markdown, description=None):
+        artifact_calls.append((key, markdown, description))
+
+    # We mock create_markdown_artifact directly in prefect.artifacts module
+    import prefect.artifacts
+    monkeypatch.setattr(
+        prefect.artifacts,
+        "create_markdown_artifact",
+        fake_create_markdown_artifact,
+    )
+
+    flow_start_time = datetime.datetime(2026, 7, 15, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    nightly_batch.publish_run_summary.fn(
+        flow_run_id="test-flow-id", flow_start_time=flow_start_time
+    )
+
+    assert len(db_calls) == 1
+    assert "WHERE start_time >= %s" in db_calls[0][0]
+    assert db_calls[0][1][0] == flow_start_time
+
+    assert len(artifact_calls) == 1
+    key, markdown, description = artifact_calls[0]
+    assert key == "nightly-etl-summary"
+    assert "test-flow-id" in markdown
+    assert "ingest_bronze" in markdown
+    assert "✅ Success" in markdown
+    assert "1,000" in markdown
+    assert "standardize_silver" in markdown
+    assert "❌ Failed" in markdown
+    assert "Some schema violation" in markdown
+
+
