@@ -35,6 +35,7 @@ SILVER_CUSTOMERS   = _get_table_dict("silver.customers")
 SILVER_ORDERS      = _get_table_dict("silver.orders")
 SILVER_PRODUCTS    = _get_table_dict("silver.products")
 SILVER_ORDER_ITEMS = _get_table_dict("silver.order_items")
+SILVER_CAMPAIGNS   = _get_table_dict("silver.campaigns")
 
 GOLD_DAILY_SALES = _get_table_dict("gold.daily_sales")
 GOLD_TOP_PRODUCTS = _get_table_dict("gold.top_products")
@@ -78,6 +79,7 @@ ALL_TABLES = [
     SILVER_ORDERS,
     SILVER_PRODUCTS,
     SILVER_ORDER_ITEMS,
+    SILVER_CAMPAIGNS,
     # Gold — analytical marts
     GOLD_DIM_CUSTOMER,
     GOLD_FACT_ORDER_ITEMS,

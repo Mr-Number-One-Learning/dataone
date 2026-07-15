@@ -960,7 +960,7 @@ def build_quality_gate_summary(
         else:
             try:
                 if table_name == "campaigns":
-                    passed_cnt = spark.read.format("iceberg").load(table_identifier("bronze", "campaigns")).count()
+                    passed_cnt = spark.read.format("iceberg").load(table_identifier("silver", "campaigns")).count()
                     quar_cnt = spark.read.format("iceberg").load(table_identifier("quarantine", "campaigns")).count()
                 elif table_name == "customers":
                     passed_cnt = spark.read.format("iceberg").load(table_identifier("silver", "customers")).count()
@@ -1084,9 +1084,11 @@ def main() -> None:
                     bronze["campaigns"],
                     dataset_name="bronze.campaigns"
                 )
-                bronze["campaigns"] = campaigns_quality.passed_df
+                campaigns_passed = campaigns_quality.passed_df
+                validate_schema(campaigns_passed.schema, "silver.campaigns")
+                write_overwrite_partitions(campaigns_passed, "silver", "campaigns")
                 write_append(campaigns_quality.quarantined_df, "quarantine", "campaigns")
-                tracker.add_output("bronze.campaigns", records_written=campaigns_quality.passed_count, records_failed=campaigns_quality.quarantined_count)
+                tracker.add_output("silver.campaigns", records_written=campaigns_quality.passed_count, records_failed=campaigns_quality.quarantined_count)
 
                 customers_df = parse_customers_from_cdc(bronze["cdc"])
                 orders_df = parse_orders_from_cdc(bronze["cdc"])
@@ -1177,7 +1179,7 @@ def main() -> None:
             tracker.add_input("silver.clickstream")
             tracker.add_input("silver.order_items")
             tracker.add_input("silver.products")
-            tracker.add_input("bronze.campaigns")
+            tracker.add_input("silver.campaigns")
             try:
                 spark = build_spark_session("bronze_to_silver.model_gold")
                 bootstrap_lakehouse(spark)
@@ -1187,16 +1189,11 @@ def main() -> None:
                 silver_reviews_passed = spark.read.format("iceberg").load(table_identifier("silver", "reviews"))
                 silver_clickstream_passed = spark.read.format("iceberg").load(table_identifier("silver", "clickstream"))
 
-                bronze_campaigns_raw = _latest_per_key(
-                    spark.read.format("iceberg").load(table_identifier("bronze", "campaigns")),
+                bronze_campaigns = _latest_per_key(
+                    spark.read.format("iceberg").load(table_identifier("silver", "campaigns")),
                     key_col="campaign_id",
                     order_col="ingested_at"
                 )
-                campaigns_quality = run_quality_gate(
-                    bronze_campaigns_raw,
-                    dataset_name="bronze.campaigns"
-                )
-                bronze_campaigns = campaigns_quality.passed_df
 
                 apply_scd2_merge(spark, customers_silver_df)
                 customer_dim_full_df = spark.read.format("iceberg").load(
@@ -1230,7 +1227,7 @@ def main() -> None:
                 tracker.add_output("gold.fact_order_items", records_written=quality_result.passed_count, records_failed=quality_result.quarantined_count)
 
                 quality_results_by_table = {
-                    "campaigns": campaigns_quality,
+                    "campaigns": None,
                     "customers": None,
                     "orders": None,
                     "products": None,
@@ -1327,9 +1324,12 @@ def main() -> None:
                     bronze["campaigns"],
                     dataset_name="bronze.campaigns"
                 )
-                bronze["campaigns"] = campaigns_quality.passed_df
+                campaigns_passed = campaigns_quality.passed_df
+                validate_schema(campaigns_passed.schema, "silver.campaigns")
+                write_overwrite_partitions(campaigns_passed, "silver", "campaigns")
                 write_append(campaigns_quality.quarantined_df, "quarantine", "campaigns")
-                tracker.add_output("bronze.campaigns", records_written=campaigns_quality.passed_count, records_failed=campaigns_quality.quarantined_count)
+                tracker.add_output("silver.campaigns", records_written=campaigns_quality.passed_count, records_failed=campaigns_quality.quarantined_count)
+                bronze["campaigns"] = campaigns_passed
 
                 customers_df = parse_customers_from_cdc(bronze["cdc"])
                 orders_df = parse_orders_from_cdc(bronze["cdc"])

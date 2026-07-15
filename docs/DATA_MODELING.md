@@ -196,7 +196,9 @@ Designed to ingest data as close to the source shape as practical.
 - **`bronze.clickstream`, `bronze.reviews`, `bronze.campaigns`**:
   - **Function:** Event and batch ingestion targets.
   - **Modeling Approach:** Typed flat schemas natively matching the upstream event shape.
-
+- **`bronze.products`, `bronze.order_items`**:
+  - **Function:** Direct relational source ingestion tables. `products` represents a daily full snapshot of the Postgres catalog, while `order_items` captures incremental sales lines.
+  - **Modeling Approach:** JDBC-extracted relational tables containing unchanged raw records from PostgreSQL.
 - **`bronze.dead_letters`**:
   - **Function:** Safely stores any unparseable or completely malformed raw Kafka events.
   - **Modeling Approach:** Schema-on-Read, capturing the raw string value and source topic for later debugging.
@@ -208,22 +210,30 @@ Designed to deduplicate, normalize, and enforce data quality. Contains **only cl
   - **Function:** Curated latest-state of customers parsed from Bronze CDC.
   - **Keys:** PK: `customer_id`.
   - **Grain:** One row per customer.
-
 - **`silver.orders`**:
   - **Function:** Curated and deduplicated orders parsed from Bronze CDC.
   - **Keys:** PK: `order_id`. FKs: `customer_id`, `campaign_id`.
   - **Grain:** One row per order.
-
-
 - **`silver.reviews`**:
   - **Function:** Curated product reviews with enriched NLP `sentiment_score`.
   - **Keys:** PK: `review_id`. FKs: `product_id`, `customer_id`.
   - **Grain:** One row per unique product review.
-
 - **`silver.clickstream`**:
   - **Function:** Curated and validated behavioral click events.
   - **Keys:** PK: `event_id`. FKs: `session_id`, `product_id`, `customer_id`.
   - **Grain:** One row per discrete user action.
+- **`silver.products`**:
+  - **Function:** Cleaned and conformed product definitions.
+  - **Keys:** PK: `product_id`.
+  - **Grain:** One row per product.
+- **`silver.order_items`**:
+  - **Function:** Cleaned and conformed transactional line items.
+  - **Keys:** PK: `order_item_id`. FKs: `order_id`, `product_id`.
+  - **Grain:** One row per order line.
+- **`silver.campaigns`**:
+  - **Function:** Validated marketing campaign budgets, spends, and timeline targets.
+  - **Keys:** PK: `campaign_id`.
+  - **Grain:** One row per campaign.
 
 ### 🥇 Gold Layer (Star Schema + Aggregated Marts)
 Contains the complete Kimball Star Schema and all pre-aggregated business marts. This is the **single presentation layer** for all analytical consumption.
