@@ -1,5 +1,11 @@
+import os
+# Prevent Prefect client from routing local API requests through system HTTP proxies
+os.environ["NO_PROXY"] = "localhost,127.0.0.1,dataone-prefect-server"
+os.environ["no_proxy"] = "localhost,127.0.0.1,dataone-prefect-server"
+
 import psycopg2
 from prefect import flow, task
+
 
 from dataone.config import postgres
 from dataone.ingestion.cdc_simulator import ensure_watermark_table, poll_once

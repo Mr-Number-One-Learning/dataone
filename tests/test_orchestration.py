@@ -10,6 +10,12 @@ import psycopg2
 
 from dataone.orchestration import nightly_batch
 from dataone.orchestration import cdc_poll
+import os
+
+# Disable Prefect API connectivity globally for tests to prevent hanging on server connection timeouts
+os.environ["PREFECT_API_URL"] = ""
+os.environ["PREFECT_API_KEY"] = ""
+
 
 
 class _FakeResult:
@@ -28,10 +34,12 @@ def test_nightly_batch_job_runs_bronze_to_silver(monkeypatch):
     monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
 
     # Run task function directly using .fn
-    nightly_batch.run_bronze_to_silver.fn()
+    nightly_batch.run_bronze_to_silver.fn(parent_run_id="fake-parent-id", parent_job_name="fake-parent-job")
     assert len(calls) == 1
     assert calls[0][0] == ["make", "run-batch"]
     assert "START_DATE" not in calls[0][1]
+    assert calls[0][1]["PARENT_RUN_ID"] == "fake-parent-id"
+    assert calls[0][1]["PARENT_JOB_NAME"] == "fake-parent-job"
 
 
 def test_run_bronze_to_silver_with_backfill_dates(monkeypatch):
@@ -45,10 +53,17 @@ def test_run_bronze_to_silver_with_backfill_dates(monkeypatch):
     monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
 
     # Run task function directly using .fn
-    nightly_batch.run_bronze_to_silver.fn(start="2026-01-01", end="2026-01-10")
+    nightly_batch.run_bronze_to_silver.fn(
+        parent_run_id="fake-parent-id",
+        parent_job_name="fake-parent-job",
+        start="2026-01-01",
+        end="2026-01-10"
+    )
     assert len(calls) == 1
     assert calls[0][1]["START_DATE"] == "2026-01-01"
     assert calls[0][1]["END_DATE"] == "2026-01-10"
+    assert calls[0][1]["PARENT_RUN_ID"] == "fake-parent-id"
+    assert calls[0][1]["PARENT_JOB_NAME"] == "fake-parent-job"
 
 
 def test_run_bronze_to_silver_raises_on_failure(monkeypatch):
@@ -57,7 +72,7 @@ def test_run_bronze_to_silver_raises_on_failure(monkeypatch):
 
     # Run task function directly using .fn
     with pytest.raises(nightly_batch.BatchJobFailed):
-        nightly_batch.run_bronze_to_silver.fn()
+        nightly_batch.run_bronze_to_silver.fn(parent_run_id="fake-parent-id", parent_job_name="fake-parent-job")
 
 
 def test_cdc_poll_flow_calls_init_and_tasks(monkeypatch):
@@ -83,6 +98,8 @@ def test_cdc_poll_flow_calls_init_and_tasks(monkeypatch):
             pass
 
     monkeypatch.setattr(psycopg2, "connect", lambda dsn: FakeConn())
+    monkeypatch.setattr(cdc_poll, "init_watermarks", cdc_poll.init_watermarks.fn)
+    monkeypatch.setattr(cdc_poll, "poll_table", cdc_poll.poll_table.fn)
     monkeypatch.setattr(cdc_poll, "ensure_watermark_table", lambda conn: init_called.pop() or init_called.append(True))
     monkeypatch.setattr(cdc_poll, "poll_once", lambda conn, tbl, pk: poll_calls.append((tbl, pk)) or 10)
 
@@ -105,27 +122,36 @@ def test_run_stage_tasks(monkeypatch):
 
     monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
 
-    nightly_batch.run_ingest_bronze.fn()
-    nightly_batch.run_standardize_silver.fn(start="2026-01-01", end="2026-01-02")
-    nightly_batch.run_model_gold.fn()
-    nightly_batch.run_clickhouse_sync.fn(start="2026-01-01", end="2026-01-02")
+    nightly_batch.run_ingest_bronze.fn(parent_run_id="id1", parent_job_name="job1")
+    nightly_batch.run_standardize_silver.fn(parent_run_id="id2", parent_job_name="job2", start="2026-01-01", end="2026-01-02")
+    nightly_batch.run_model_gold.fn(parent_run_id="id3", parent_job_name="job3")
+    nightly_batch.run_clickhouse_sync.fn(parent_run_id="id4", parent_job_name="job4", start="2026-01-01", end="2026-01-02")
 
     assert len(calls) == 4
 
     assert calls[0][0] == ["make", "run-batch"]
     assert calls[0][1]["STAGE"] == "ingest_bronze"
     assert "START_DATE" not in calls[0][1]
+    assert calls[0][1]["PARENT_RUN_ID"] == "id1"
+    assert calls[0][1]["PARENT_JOB_NAME"] == "job1"
 
     assert calls[1][0] == ["make", "run-batch"]
     assert calls[1][1]["STAGE"] == "standardize_silver"
     assert calls[1][1]["START_DATE"] == "2026-01-01"
     assert calls[1][1]["END_DATE"] == "2026-01-02"
+    assert calls[1][1]["PARENT_RUN_ID"] == "id2"
+    assert calls[1][1]["PARENT_JOB_NAME"] == "job2"
 
     assert calls[2][0] == ["make", "run-batch"]
     assert calls[2][1]["STAGE"] == "model_gold"
     assert "START_DATE" not in calls[2][1]
+    assert calls[2][1]["PARENT_RUN_ID"] == "id3"
+    assert calls[2][1]["PARENT_JOB_NAME"] == "job3"
 
     assert calls[3][0] == ["make", "run-batch"]
     assert calls[3][1]["STAGE"] == "sync_clickhouse"
     assert calls[3][1]["START_DATE"] == "2026-01-01"
     assert calls[3][1]["END_DATE"] == "2026-01-02"
+    assert calls[3][1]["PARENT_RUN_ID"] == "id4"
+    assert calls[3][1]["PARENT_JOB_NAME"] == "job4"
+

@@ -1049,7 +1049,7 @@ def main() -> None:
             tracker.add_input("postgres.products")
             tracker.add_input("postgres.order_items")
             try:
-                spark = build_spark_session("dataone-batch-ingest-bronze")
+                spark = build_spark_session("bronze_to_silver.ingest_bronze")
                 bootstrap_lakehouse(spark)
                 campaigns_files = ingest_campaigns_to_bronze(spark)
                 reviews_count = ingest_reviews_to_bronze(spark)
@@ -1076,7 +1076,7 @@ def main() -> None:
             tracker.add_input("bronze.products")
             tracker.add_input("bronze.order_items")
             try:
-                spark = build_spark_session("dataone-batch-standardize-silver")
+                spark = build_spark_session("bronze_to_silver.standardize_silver")
                 bootstrap_lakehouse(spark)
                 bronze = read_bronze_tables(spark, args.start, args.end)
 
@@ -1179,7 +1179,7 @@ def main() -> None:
             tracker.add_input("silver.products")
             tracker.add_input("bronze.campaigns")
             try:
-                spark = build_spark_session("dataone-batch-model-gold")
+                spark = build_spark_session("bronze_to_silver.model_gold")
                 bootstrap_lakehouse(spark)
 
                 customers_silver_df = spark.read.format("iceberg").load(table_identifier("silver", "customers"))
@@ -1284,7 +1284,7 @@ def main() -> None:
             for name in gold_table_names:
                 tracker.add_input(f"gold.{name}")
             try:
-                spark = build_spark_session("dataone-batch-sync-clickhouse")
+                spark = build_spark_session("bronze_to_silver.sync_clickhouse")
                 bootstrap_lakehouse(spark)
 
                 gold_from_iceberg = {
@@ -1314,7 +1314,7 @@ def main() -> None:
             tracker.add_input("nifi.campaigns")
             
             try:
-                spark = build_spark_session("dataone")
+                spark = build_spark_session("bronze_to_silver")
                 bootstrap_lakehouse(spark)
                 ingest_campaigns_to_bronze(spark)
                 ingest_reviews_to_bronze(spark)
