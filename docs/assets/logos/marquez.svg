@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" rx="15" fill="#1C1E21"/>
+  <!-- Marquez M Shape -->
+  <path d="M25 75 V25 L50 55 L75 25 V75" fill="none" stroke="#00C08B" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

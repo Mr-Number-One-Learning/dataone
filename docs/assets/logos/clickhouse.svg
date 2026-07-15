@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" rx="15" fill="#FAFAFA"/>
+  <!-- Clickhouse Orange Bars -->
+  <rect x="20" y="20" width="12" height="60" fill="#FFCC00" rx="2"/>
+  <rect x="36" y="35" width="12" height="45" fill="#FF9900" rx="2"/>
+  <rect x="52" y="20" width="12" height="60" fill="#FFCC00" rx="2"/>
+  <rect x="68" y="45" width="12" height="35" fill="#F03E3E" rx="2"/>
+</svg>
