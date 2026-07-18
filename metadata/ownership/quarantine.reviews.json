@@ -1,0 +1,10 @@
+{
+  "dataset": "quarantine.reviews",
+  "domain": "reviews",
+  "owner": "Customer Support Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "1 year",
+  "sla": "Daily by 6 AM UTC",
+  "refresh_frequency": "daily",
+  "consumers": []
+}

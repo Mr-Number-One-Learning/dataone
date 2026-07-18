@@ -1,0 +1,87 @@
+{
+  "dataset": "quarantine.order_facts",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "order_id"
+  ],
+  "business_keys": [
+    "order_id"
+  ],
+  "columns": [
+    {
+      "name": "sk_order_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "order_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "order_date",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "date_key",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "status",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "sk_product_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "quantity",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "line_total",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "campaign_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "sk_campaign_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "_quarantine_reason",
+      "type": "STRING",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "order_id"
+  ]
+}

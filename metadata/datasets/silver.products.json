@@ -1,0 +1,7 @@
+{
+  "name": "silver.products",
+  "description": "Silver dataset for products",
+  "domain": "products",
+  "layer": "silver",
+  "data_classification": "internal"
+}

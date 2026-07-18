@@ -1,0 +1,10 @@
+{
+  "dataset": "gold.conversion_rate",
+  "domain": "web",
+  "owner": "Web Analytics Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "Daily by 6 AM UTC",
+  "refresh_frequency": "daily",
+  "consumers": []
+}

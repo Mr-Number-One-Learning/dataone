@@ -1,0 +1,13 @@
+{
+  "dataset": "silver.clickstream",
+  "domain": "web",
+  "owner": "Web Analytics Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "99.9% fresh within 2 hours of ingestion",
+  "refresh_frequency": "continuous",
+  "consumers": [
+    "gold.conversion_rate",
+    "gold.funnel_conversion"
+  ]
+}

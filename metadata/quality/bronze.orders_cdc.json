@@ -1,0 +1,6 @@
+{
+  "dataset": "bronze.orders_cdc",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

@@ -1,0 +1,15 @@
+{
+  "dataset": "bronze.products",
+  "required_columns": [
+    "product_id",
+    "sku",
+    "ingested_at"
+  ],
+  "column_bounds": {
+    "unit_price": [
+      0,
+      null
+    ]
+  },
+  "custom_rules": []
+}

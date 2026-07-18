@@ -196,7 +196,9 @@ Designed to ingest data as close to the source shape as practical.
 - **`bronze.clickstream`, `bronze.reviews`, `bronze.campaigns`**:
   - **Function:** Event and batch ingestion targets.
   - **Modeling Approach:** Typed flat schemas natively matching the upstream event shape.
-
+- **`bronze.products`, `bronze.order_items`**:
+  - **Function:** Direct relational source ingestion tables. `products` represents a daily full snapshot of the Postgres catalog, while `order_items` captures incremental sales lines.
+  - **Modeling Approach:** JDBC-extracted relational tables containing unchanged raw records from PostgreSQL.
 - **`bronze.dead_letters`**:
   - **Function:** Safely stores any unparseable or completely malformed raw Kafka events.
   - **Modeling Approach:** Schema-on-Read, capturing the raw string value and source topic for later debugging.
@@ -208,22 +210,30 @@ Designed to deduplicate, normalize, and enforce data quality. Contains **only cl
   - **Function:** Curated latest-state of customers parsed from Bronze CDC.
   - **Keys:** PK: `customer_id`.
   - **Grain:** One row per customer.
-
 - **`silver.orders`**:
   - **Function:** Curated and deduplicated orders parsed from Bronze CDC.
   - **Keys:** PK: `order_id`. FKs: `customer_id`, `campaign_id`.
   - **Grain:** One row per order.
-
-
 - **`silver.reviews`**:
   - **Function:** Curated product reviews with enriched NLP `sentiment_score`.
   - **Keys:** PK: `review_id`. FKs: `product_id`, `customer_id`.
   - **Grain:** One row per unique product review.
-
 - **`silver.clickstream`**:
   - **Function:** Curated and validated behavioral click events.
   - **Keys:** PK: `event_id`. FKs: `session_id`, `product_id`, `customer_id`.
   - **Grain:** One row per discrete user action.
+- **`silver.products`**:
+  - **Function:** Cleaned and conformed product definitions.
+  - **Keys:** PK: `product_id`.
+  - **Grain:** One row per product.
+- **`silver.order_items`**:
+  - **Function:** Cleaned and conformed transactional line items.
+  - **Keys:** PK: `order_item_id`. FKs: `order_id`, `product_id`.
+  - **Grain:** One row per order line.
+- **`silver.campaigns`**:
+  - **Function:** Validated marketing campaign budgets, spends, and timeline targets.
+  - **Keys:** PK: `campaign_id`.
+  - **Grain:** One row per campaign.
 
 ### 🥇 Gold Layer (Star Schema + Aggregated Marts)
 Contains the complete Kimball Star Schema and all pre-aggregated business marts. This is the **single presentation layer** for all analytical consumption.
@@ -312,5 +322,22 @@ The `gold.dim_customer` implements **SCD Type 2**.
 
 ---
 
+## 6. Dataset-First Design & Partitioning Strategy
+
+### Dataset-First Philosophy
+In the refactored platform, **datasets are the primary, permanent entities** rather than Spark execution jobs. Spark and Prefect jobs are merely implementation details that run to populate these datasets. 
+Every dataset has associated metadata contracts declaring its ownership, SLA, partition transforms, schemas, and quality standards, making the dataset self-describing and independent of processing pipelines.
+
+### Partitioning & Compaction Details
+To optimize performance, limit metadata overhead, and solve the "small files problem":
+- **Iceberg Partition Evolution**: High-volume tables use Iceberg's native partition transforms (e.g., `days(order_date)`, `months(submitted_at)`, and `bucket(16, customer_id)`). This allows the partitioning schema to evolve over time (e.g., changing from daily to monthly) without rewriting historical data.
+- **Sort Order**: Key datasets are sorted by high-query-frequency keys (e.g., `fact_order_items` sorted by `order_date` and `customer_id`) before writing. This clusters data logically, improving parquet min/max dictionary pruning.
+- **Target File Size**: The platform targets **100–500 MB** Iceberg data files. For local low-resource containers, row groups are tuned to `16 MiB` to avoid OOMs, but in production, Iceberg properties control file sizing:
+  `'write.target-file-size-bytes'='536870912'` (512 MB).
+- **Compaction & Retention**: A maintenance routine calls Iceberg's `rewrite_data_files` to compact small files into the target size and runs `expire_snapshots` to enforce data retention limits.
+
+---
+
 *Created by **Eng. Ahmed Maher Al-Maqtari***  
 *Copyright © Mr.NumberOne*
+

@@ -1,0 +1,51 @@
+{
+  "dataset": "gold.roas",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "campaign_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "channel",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "start_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "end_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "spend",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "attributed_revenue",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "roas",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": null
+}

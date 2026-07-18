@@ -1,0 +1,10 @@
+{
+  "dataset": "silver.clickstream",
+  "required_columns": [
+    "session_id",
+    "event_type",
+    "ts"
+  ],
+  "column_bounds": {},
+  "custom_rules": []
+}

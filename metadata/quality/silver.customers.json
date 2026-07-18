@@ -1,0 +1,8 @@
+{
+  "dataset": "silver.customers",
+  "required_columns": [
+    "customer_id"
+  ],
+  "column_bounds": {},
+  "custom_rules": []
+}

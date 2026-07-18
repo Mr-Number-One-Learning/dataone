@@ -1,0 +1,7 @@
+{
+  "name": "gold.fact_order_items",
+  "description": "Gold dataset for fact_order_items",
+  "domain": "orders",
+  "layer": "gold",
+  "data_classification": "confidential"
+}

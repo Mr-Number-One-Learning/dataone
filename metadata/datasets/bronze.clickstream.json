@@ -1,0 +1,7 @@
+{
+  "name": "bronze.clickstream",
+  "description": "Bronze dataset for clickstream",
+  "domain": "web",
+  "layer": "bronze",
+  "data_classification": "internal"
+}

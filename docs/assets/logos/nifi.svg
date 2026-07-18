@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" rx="15" fill="#00467F"/>
+  <!-- NiFi Overlapping curved waves/nodes in Teal/Cyan/Green -->
+  <path d="M30 45c10-15 25-15 35 0s10 25-5 35-25-5-30-35z" fill="#00A3E0" opacity="0.6"/>
+  <path d="M45 35c10-15 25-15 35 0s5 25-10 30-25-10-25-30z" fill="#78BE20" opacity="0.6"/>
+  <path d="M35 55c15-5 25 5 25 20s-15 15-25 5-10-20 0-25z" fill="#25E8C8" opacity="0.6"/>
+  <circle cx="50" cy="50" r="8" fill="#FFF"/>
+</svg>

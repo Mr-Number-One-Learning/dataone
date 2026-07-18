@@ -1,0 +1,57 @@
+{
+  "dataset": "bronze.products",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "product_id"
+  ],
+  "business_keys": [
+    "product_id"
+  ],
+  "columns": [
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "sku",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "category",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DECIMAL(10,2)",
+      "nullable": true
+    },
+    {
+      "name": "created_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "updated_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "ingested_at",
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "product_id"
+  ]
+}

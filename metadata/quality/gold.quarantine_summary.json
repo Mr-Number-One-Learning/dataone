@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.quarantine_summary",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

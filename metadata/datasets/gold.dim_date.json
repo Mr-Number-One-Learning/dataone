@@ -1,0 +1,7 @@
+{
+  "name": "gold.dim_date",
+  "description": "Gold dataset for dim_date",
+  "domain": "orders",
+  "layer": "gold",
+  "data_classification": "internal"
+}

@@ -100,24 +100,23 @@ def reconcile_row_counts(source_count: int, landed_count: int) -> bool:
 
 def run_quality_gate(
     df: DataFrame,
-    required_columns: list[str],
+    required_columns: list[str] | None = None,
     column_bounds: dict[str, tuple[float | None, float | None]] | None = None,
+    dataset_name: str | None = None,
 ) -> QualityResult:
     """Applies quality rules and splits rows into passed and quarantined dataframes.
 
     Splits df into (passed, quarantined) based on null + range checks.
     Quarantined rows are tagged with a human-readable reason in
     QUARANTINE_REASON_COLUMN instead of being dropped — the caller is
-    expected to write quarantined_df to a `quarantine.*` Iceberg table (see
-    iceberg_helpers.table_identifier("quarantine", ...)), never to /dev/null.
-    A row failing both checks gets both reasons ("null_check_failed,
-    range_check_failed") so quarantine triage doesn't lose information.
+    expected to write quarantined_df to a `quarantine.*` Iceberg table.
 
     Args:
         df (DataFrame): The input PySpark DataFrame.
-        required_columns (list[str]): A list of column names that must not be null.
-        column_bounds (dict[str, tuple[float | None, float | None]] | None, optional): 
-            A dictionary mapping column names to (low, high) bounds. Defaults to None.
+        required_columns (list[str] | None): A list of column names that must not be null.
+        column_bounds (dict[str, tuple[float | None, float | None]] | None): 
+            A dictionary mapping column names to (low, high) bounds.
+        dataset_name (str | None): Optional dataset name to load rules from metadata.
 
     Returns:
         QualityResult: A dataclass containing the passed dataframe, quarantined dataframe,
@@ -126,10 +125,27 @@ def run_quality_gate(
     Raises:
         ValueError: If quality rules reference columns absent from the DataFrame.
     """
+    from dataone.metadata.registry import get_registry
+    
+    if dataset_name:
+        registry = get_registry()
+        quality_config = registry.get_quality(dataset_name)
+        if quality_config:
+            if required_columns is None:
+                required_columns = quality_config.get("required_columns", [])
+            if column_bounds is None:
+                column_bounds = {}
+                bounds_config = quality_config.get("column_bounds", {})
+                for col, b in bounds_config.items():
+                    low = b[0] if (len(b) > 0 and b[0] is not None) else None
+                    high = b[1] if (len(b) > 1 and b[1] is not None) else None
+                    column_bounds[col] = (low, high)
+
+    required_columns = required_columns or []
     column_bounds = column_bounds or {}
 
     # Fail fast with a clear message instead of letting Spark raise an
-    # opaque AnalysisException mid-plan when a rule references a column the
+    # AnalysisException mid-plan when a rule references a column the
     # DataFrame doesn't have (usually a typo in the caller's rule set).
     referenced = set(required_columns) | set(column_bounds)
     missing = sorted(referenced - set(df.columns))

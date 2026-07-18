@@ -1,0 +1,15 @@
+{
+  "dataset": "silver.products",
+  "domain": "products",
+  "owner": "Catalog Management Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "99.9% fresh within 2 hours of ingestion",
+  "refresh_frequency": "daily",
+  "consumers": [
+    "gold.dim_product",
+    "gold.fact_order_items",
+    "gold.top_products",
+    "gold.product_sentiment"
+  ]
+}

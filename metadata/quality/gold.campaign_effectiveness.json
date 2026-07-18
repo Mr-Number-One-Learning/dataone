@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.campaign_effectiveness",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

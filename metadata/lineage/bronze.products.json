@@ -1,0 +1,9 @@
+{
+  "dataset": "bronze.products",
+  "upstream": [
+    "postgres.products"
+  ],
+  "downstream": [
+    "silver.products"
+  ]
+}

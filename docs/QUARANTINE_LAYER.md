@@ -26,7 +26,7 @@ To ensure quarantined data isn't just "swept under the rug", the batch pipeline 
 
 ## Covered Datasets
 
-Currently, the quality gate covers seven core datasets:
+Currently, the quality gate covers eight core datasets:
 
 | Bronze / Silver Source | Quality Constraints | Target Quarantine Table |
 | :--- | :--- | :--- |
@@ -35,6 +35,7 @@ Currently, the quality gate covers seven core datasets:
 | `orders` | `order_id`, `customer_id`, `order_date` must not be null. | `quarantine.orders` |
 | `products` | `product_id`, `category`, `name` must not be null. | `quarantine.products` |
 | `clickstream` | `session_id`, `event_type`, `ts` must not be null. `event_type` must be valid. | `quarantine.clickstream` |
+| `order_items` | `order_item_id`, `order_id` must not be null. `quantity` ≥ 1, `unit_price` ≥ 0. | `quarantine.order_items` |
 | `fact_order_items` | `order_id`, `customer_id`, `product_id` must not be null. `unit_price` ≥ 0, `quantity` ≥ 1. | `quarantine.fact_order_items` |
 | `reviews` | `review_id`, `product_id`, `rating` must not be null. `rating` must be between 1 and 5. | `quarantine.reviews` |
 

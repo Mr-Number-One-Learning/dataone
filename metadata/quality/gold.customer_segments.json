@@ -1,0 +1,6 @@
+{
+  "dataset": "gold.customer_segments",
+  "required_columns": [],
+  "column_bounds": {},
+  "custom_rules": []
+}

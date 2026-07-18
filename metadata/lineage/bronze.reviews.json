@@ -1,0 +1,9 @@
+{
+  "dataset": "bronze.reviews",
+  "upstream": [
+    "mongodb.reviews"
+  ],
+  "downstream": [
+    "silver.reviews"
+  ]
+}

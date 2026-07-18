@@ -1,0 +1,18 @@
+{
+  "dataset": "silver.order_items",
+  "required_columns": [
+    "order_item_id",
+    "order_id"
+  ],
+  "column_bounds": {
+    "quantity": [
+      1,
+      null
+    ],
+    "unit_price": [
+      0,
+      null
+    ]
+  },
+  "custom_rules": []
+}

@@ -1,0 +1,7 @@
+{
+  "name": "gold.roas",
+  "description": "Gold dataset for roas",
+  "domain": "orders",
+  "layer": "gold",
+  "data_classification": "internal"
+}

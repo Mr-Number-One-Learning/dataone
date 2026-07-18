@@ -1,0 +1,15 @@
+{
+  "dataset": "gold.fact_order_items",
+  "domain": "orders",
+  "owner": "Orders Platform Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "Daily by 6 AM UTC",
+  "refresh_frequency": "daily",
+  "consumers": [
+    "gold.daily_sales",
+    "gold.top_products",
+    "gold.customer_segments",
+    "gold.customer_clv"
+  ]
+}

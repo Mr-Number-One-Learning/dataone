@@ -1,0 +1,10 @@
+{
+  "dataset": "silver.orders",
+  "required_columns": [
+    "order_id",
+    "customer_id",
+    "order_date"
+  ],
+  "column_bounds": {},
+  "custom_rules": []
+}

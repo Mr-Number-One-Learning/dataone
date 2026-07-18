@@ -1,0 +1,8 @@
+{
+  "dataset": "gold.product_sentiment",
+  "upstream": [
+    "silver.reviews",
+    "silver.products"
+  ],
+  "downstream": []
+}

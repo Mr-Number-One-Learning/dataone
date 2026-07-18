@@ -1,0 +1,7 @@
+{
+  "name": "gold.top_products",
+  "description": "Gold dataset for top_products",
+  "domain": "products",
+  "layer": "gold",
+  "data_classification": "internal"
+}

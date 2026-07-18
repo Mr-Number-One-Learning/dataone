@@ -1,0 +1,7 @@
+{
+  "name": "silver.clickstream",
+  "description": "Silver dataset for clickstream",
+  "domain": "web",
+  "layer": "silver",
+  "data_classification": "internal"
+}

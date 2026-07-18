@@ -1,16 +1,15 @@
-pyspark==3.5.1
-kafka-python==2.0.2
-psycopg2-binary==2.9.9
-pymongo==4.7.2
-faker==25.2.0
-python-dotenv==1.0.1
-tenacity==8.3.0
+pyspark>=3.5.1
+kafka-python>=2.0.2
+psycopg2-binary>=2.9.9
+pymongo>=4.7.2
+faker>=25.2.0
+python-dotenv>=1.0.1
 # Used to instrument custom Python services (CDC simulator, orchestrator)
 # with their own /metrics endpoint for Prometheus — not yet wired up, but a
 # concrete near-term need, not speculative.
-prometheus-client==0.20.0
-structlog==24.1.0
-schedule==1.2.2
-requests==2.32.3
-textblob==0.18.0
-confluent-kafka==2.3.0
+prometheus-client>=0.20.0
+structlog>=24.1.0
+prefect>=3.0
+requests>=2.31.0
+textblob>=0.18.0
+confluent-kafka>=2.3.0

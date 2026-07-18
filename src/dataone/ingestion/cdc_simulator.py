@@ -28,7 +28,6 @@ from psycopg2.extras import RealDictCursor
 
 from dataone.config import kafka, postgres
 from dataone.ingestion.kafka_producers import flush_producer, send
-from dataone.orchestration.retry import with_retry
 from dataone.utils.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -181,7 +180,6 @@ def emit_change_event(table: str, pk_column: str, row: dict) -> None:
     send(kafka.topic_orders_cdc, event, key=str(row[pk_column]))
 
 
-@with_retry(max_attempts=3, exceptions=(psycopg2.Error,))
 def poll_once(conn, table: str, pk_column: str) -> int:
     """Polls a table for changes and emits events.
 

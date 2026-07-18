@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" rx="15" fill="#070E16"/>
+  <!-- Prefect P Logo Shape -->
+  <path d="M30 25 h25 a20 20 0 0 1 0 40 h-25 z" fill="none" stroke="#25E8C8" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M30 20 v60" stroke="#25E8C8" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="55" cy="45" r="5" fill="#25E8C8"/>
+</svg>

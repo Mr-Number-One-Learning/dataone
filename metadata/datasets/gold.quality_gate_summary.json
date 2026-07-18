@@ -1,0 +1,7 @@
+{
+  "name": "gold.quality_gate_summary",
+  "description": "Gold dataset for quality_gate_summary",
+  "domain": "platform",
+  "layer": "gold",
+  "data_classification": "internal"
+}

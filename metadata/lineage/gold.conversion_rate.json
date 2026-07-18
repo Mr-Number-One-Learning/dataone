@@ -1,0 +1,7 @@
+{
+  "dataset": "gold.conversion_rate",
+  "upstream": [
+    "silver.clickstream"
+  ],
+  "downstream": []
+}

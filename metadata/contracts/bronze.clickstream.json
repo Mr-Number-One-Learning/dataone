@@ -1,0 +1,43 @@
+{
+  "dataset": "bronze.clickstream",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "event_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "session_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "event_type",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "ts",
+      "type": "TIMESTAMP",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "days(ts)"
+  ],
+  "sort_order": null
+}

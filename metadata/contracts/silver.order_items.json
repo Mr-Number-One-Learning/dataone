@@ -1,0 +1,44 @@
+{
+  "dataset": "silver.order_items",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "order_item_id"
+  ],
+  "business_keys": [
+    "order_item_id"
+  ],
+  "columns": [
+    {
+      "name": "order_item_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "order_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "quantity",
+      "type": "INTEGER",
+      "nullable": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DECIMAL(10,2)",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "bucket(16, order_id)"
+  ],
+  "sort_order": [
+    "order_item_id"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "name": "quarantine.customers",
+  "description": "Quarantine dataset for customers",
+  "domain": "customers",
+  "layer": "quarantine",
+  "data_classification": "restricted"
+}

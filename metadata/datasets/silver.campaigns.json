@@ -1,0 +1,7 @@
+{
+  "name": "silver.campaigns",
+  "description": "Conformed dataset for campaigns",
+  "domain": "marketing",
+  "layer": "silver",
+  "data_classification": "internal"
+}

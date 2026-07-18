@@ -1,0 +1,15 @@
+{
+  "dataset": "silver.reviews",
+  "required_columns": [
+    "review_id",
+    "product_id",
+    "rating"
+  ],
+  "column_bounds": {
+    "rating": [
+      1,
+      5
+    ]
+  },
+  "custom_rules": []
+}

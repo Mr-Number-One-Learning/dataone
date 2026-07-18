@@ -1,0 +1,7 @@
+{
+  "dataset": "gold.dim_product",
+  "upstream": [
+    "silver.products"
+  ],
+  "downstream": []
+}

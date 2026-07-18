@@ -1,0 +1,79 @@
+{
+  "dataset": "gold.fact_orders",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [],
+  "business_keys": [],
+  "columns": [
+    {
+      "name": "sk_order_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "order_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "customer_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "order_date",
+      "type": "TIMESTAMP",
+      "nullable": true
+    },
+    {
+      "name": "date_key",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "status",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "sk_product_id",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "quantity",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "line_total",
+      "type": "DOUBLE",
+      "nullable": true
+    },
+    {
+      "name": "campaign_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "sk_campaign_id",
+      "type": "STRING",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "days(order_date)",
+    "bucket(16, customer_id)"
+  ],
+  "sort_order": null
+}

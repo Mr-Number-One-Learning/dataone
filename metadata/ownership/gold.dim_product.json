@@ -1,0 +1,10 @@
+{
+  "dataset": "gold.dim_product",
+  "domain": "products",
+  "owner": "Catalog Management Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "Daily by 6 AM UTC",
+  "refresh_frequency": "daily",
+  "consumers": []
+}

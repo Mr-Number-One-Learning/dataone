@@ -1,0 +1,9 @@
+{
+  "dataset": "silver.order_items",
+  "upstream": [
+    "bronze.order_items"
+  ],
+  "downstream": [
+    "gold.fact_order_items"
+  ]
+}

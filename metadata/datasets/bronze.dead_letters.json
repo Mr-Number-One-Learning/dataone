@@ -1,0 +1,7 @@
+{
+  "name": "bronze.dead_letters",
+  "description": "Bronze dataset for dead_letters",
+  "domain": "platform",
+  "layer": "bronze",
+  "data_classification": "internal"
+}

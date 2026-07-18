@@ -1,0 +1,14 @@
+{
+  "dataset": "silver.products",
+  "required_columns": [
+    "product_id",
+    "sku"
+  ],
+  "column_bounds": {
+    "unit_price": [
+      0,
+      null
+    ]
+  },
+  "custom_rules": []
+}

@@ -1,0 +1,69 @@
+{
+  "dataset": "gold.dim_date",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "date_key"
+  ],
+  "business_keys": [
+    "date_key"
+  ],
+  "columns": [
+    {
+      "name": "date_key",
+      "type": "INT",
+      "nullable": false
+    },
+    {
+      "name": "calendar_date",
+      "type": "DATE",
+      "nullable": true
+    },
+    {
+      "name": "day_of_week",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "day_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "week_of_year",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "month",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "month_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "quarter",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "year",
+      "type": "INT",
+      "nullable": true
+    },
+    {
+      "name": "is_weekend",
+      "type": "BOOLEAN",
+      "nullable": true
+    }
+  ],
+  "partition_by": [
+    "year"
+  ],
+  "sort_order": [
+    "date_key"
+  ]
+}

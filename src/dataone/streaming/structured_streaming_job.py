@@ -368,52 +368,68 @@ def main() -> None:
     cdc_raw = read_kafka_stream(spark, kafka.topic_orders_cdc)
     cdc_good, cdc_bad = parse_with_dead_letter(cdc_raw, _CDC_ENVELOPE_SCHEMA, kafka.topic_orders_cdc)
     cdc_parsed = parse_cdc_stream(cdc_good)
-    cdc_query = write_to_bronze(cdc_parsed, "bronze", "orders_cdc", "orders_cdc")
-
+    
     clickstream_raw = read_kafka_stream(spark, kafka.topic_clickstream)
     clickstream_good, clickstream_bad = parse_with_dead_letter(clickstream_raw, _CLICKSTREAM_EVENT_SCHEMA, kafka.topic_clickstream)
     clickstream_parsed = parse_clickstream_stream(clickstream_good)
-    clickstream_query = write_to_bronze(
-        clickstream_parsed,
-        "bronze",
-        "clickstream",
-        "clickstream",
-        dedup_cols=["event_id"],
-        event_time_col="ts",
-    )
 
-    dlq_query = write_to_bronze(cdc_bad.unionByName(clickstream_bad), "bronze", "dead_letters", "dead_letters")
+    from dataone.lineage.tracker import LineageTracker
+    from dataone.metadata.contracts import validate_schema
 
-    live_activity_query = write_live_aggregates_to_clickhouse(
-        build_live_activity_aggregate(clickstream_parsed)
-    )
+    with LineageTracker("structured_streaming_job") as tracker:
+        tracker.add_input("kafka.orders_cdc")
+        tracker.add_input("kafka.clickstream")
+        tracker.add_output("bronze.orders_cdc")
+        tracker.add_output("bronze.clickstream")
+        tracker.add_output("bronze.dead_letters")
+        tracker.add_output("kafka.anomaly_alerts")
 
-    anomaly_query = (
-        build_anomaly_detector(clickstream_parsed)
-        .selectExpr("CAST(window.start AS STRING) AS key", "to_json(struct(*)) AS value")
-        .writeStream.format("kafka")
-        .option("kafka.bootstrap.servers", kafka.bootstrap_servers)
-        .option("topic", kafka.topic_anomaly_alerts)
-        .option("checkpointLocation", f"{CHECKPOINT_BASE}/anomaly_alerts")
-        .outputMode("append")
-        .start()
-    )
+        # Validate contract schemas statically before running queries
+        validate_schema(cdc_parsed.schema, "bronze.orders_cdc")
+        validate_schema(clickstream_parsed.schema, "bronze.clickstream")
 
-    queries = [cdc_query, clickstream_query, dlq_query, live_activity_query, anomaly_query]
-    log.info("structured_streaming_job.started", queries=[q.name for q in queries])
-    try:
-        spark.streams.awaitAnyTermination()
-    except Exception as exc:
-        log.error("structured_streaming_job.query_failed", error=str(exc), exc_info=True)
-        raise
-    finally:
-        # awaitAnyTermination returns/raises when ONE query dies — stop the
-        # survivors cleanly (checkpoints make restart safe) instead of
-        # leaving them running against a session we're about to tear down.
-        for q in queries:
-            if q.isActive:
-                q.stop()
-        spark.stop()
+        cdc_query = write_to_bronze(cdc_parsed, "bronze", "orders_cdc", "orders_cdc")
+        clickstream_query = write_to_bronze(
+            clickstream_parsed,
+            "bronze",
+            "clickstream",
+            "clickstream",
+            dedup_cols=["event_id"],
+            event_time_col="ts",
+        )
+
+        dlq_query = write_to_bronze(cdc_bad.unionByName(clickstream_bad), "bronze", "dead_letters", "dead_letters")
+
+        live_activity_query = write_live_aggregates_to_clickhouse(
+            build_live_activity_aggregate(clickstream_parsed)
+        )
+
+        anomaly_query = (
+            build_anomaly_detector(clickstream_parsed)
+            .selectExpr("CAST(window.start AS STRING) AS key", "to_json(struct(*)) AS value")
+            .writeStream.format("kafka")
+            .option("kafka.bootstrap.servers", kafka.bootstrap_servers)
+            .option("topic", kafka.topic_anomaly_alerts)
+            .option("checkpointLocation", f"{CHECKPOINT_BASE}/anomaly_alerts")
+            .outputMode("append")
+            .start()
+        )
+
+        queries = [cdc_query, clickstream_query, dlq_query, live_activity_query, anomaly_query]
+        log.info("structured_streaming_job.started", queries=[q.name for q in queries])
+        try:
+            spark.streams.awaitAnyTermination()
+        except Exception as exc:
+            log.error("structured_streaming_job.query_failed", error=str(exc), exc_info=True)
+            raise
+        finally:
+            # awaitAnyTermination returns/raises when ONE query dies — stop the
+            # survivors cleanly (checkpoints make restart safe) instead of
+            # leaving them running against a session we're about to tear down.
+            for q in queries:
+                if q.isActive:
+                    q.stop()
+            spark.stop()
 
 
 if __name__ == "__main__":

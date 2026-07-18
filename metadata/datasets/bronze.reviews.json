@@ -1,0 +1,7 @@
+{
+  "name": "bronze.reviews",
+  "description": "Bronze dataset for reviews",
+  "domain": "reviews",
+  "layer": "bronze",
+  "data_classification": "internal"
+}

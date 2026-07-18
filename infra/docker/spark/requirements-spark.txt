@@ -10,3 +10,4 @@ python-dotenv==1.0.1
 structlog==24.1.0
 textblob==0.18.0
 psycopg2-binary==2.9.9
+kafka-python==2.0.2

@@ -1,0 +1,47 @@
+{
+  "dataset": "gold.dim_product",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "sk_product_id"
+  ],
+  "business_keys": [
+    "sk_product_id"
+  ],
+  "columns": [
+    {
+      "name": "sk_product_id",
+      "type": "STRING",
+      "nullable": false
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "sku",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "product_name",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "category",
+      "type": "STRING",
+      "nullable": true
+    },
+    {
+      "name": "current_price",
+      "type": "DOUBLE",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "sk_product_id"
+  ]
+}

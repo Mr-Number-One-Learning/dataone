@@ -1,0 +1,7 @@
+{
+  "name": "silver.reviews",
+  "description": "Silver dataset for reviews",
+  "domain": "reviews",
+  "layer": "silver",
+  "data_classification": "internal"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "quarantine.reviews",
+  "description": "Quarantine dataset for reviews",
+  "domain": "reviews",
+  "layer": "quarantine",
+  "data_classification": "restricted"
+}

@@ -1,0 +1,7 @@
+{
+  "name": "quarantine.campaigns",
+  "description": "Quarantine dataset for campaigns",
+  "domain": "marketing",
+  "layer": "quarantine",
+  "data_classification": "restricted"
+}

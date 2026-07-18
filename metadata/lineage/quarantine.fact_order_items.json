@@ -1,0 +1,7 @@
+{
+  "dataset": "quarantine.fact_order_items",
+  "upstream": [
+    "gold.fact_order_items"
+  ],
+  "downstream": []
+}

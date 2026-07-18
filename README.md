@@ -11,6 +11,7 @@
 ![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Prefect](https://img.shields.io/badge/Prefect-ffffff?style=for-the-badge&logo=prefect&logoColor=070E82)
 ![Marquez](https://img.shields.io/badge/Marquez-000000?style=for-the-badge&logoColor=white)
 ![OpenLineage](https://img.shields.io/badge/OpenLineage-272A30?style=for-the-badge&logoColor=white)
 ![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
@@ -32,7 +33,7 @@ Every tool in this stack was selected deliberately to maximize performance while
 | **Lakehouse Format** | **Apache Iceberg** | Bronze/Silver/Gold tables, schema evolution, time travel, SCD2 | Provides ACID transactions, schema evolution, and partition pruning without needing a Hive Metastore or live HDFS cluster. |
 | **OLAP Serving** | **ClickHouse** | Pre-aggregated marts for the dashboard | Achieves sub-second aggregations on a single node with a fraction of the RAM footprint required by Hive or Presto. |
 | **Processing Engine** | **PySpark** | Both Batch ETL (SCD2, dedup) and Structured Streaming | Reuses the same codebase/skills for batch and real-time paradigms. Industry-standard for heavy data transformations. |
-| **Orchestration** | **Python (Daemon)** | Custom lightweight scheduler, CDC simulator, DQ checks | Avoids running Airflow/Dagster locally, saving massive resources while still achieving cron-style scheduling and retries. |
+| **Orchestration** | **Prefect** | Lightweight orchestration via Prefect flows and tasks | Prefect provides robust task-level retries and visibility with a minimal footprint, replacing the legacy custom scheduler. |
 | **Dashboards** | **Grafana** | Ops dashboards (Prometheus) and Business KPIs (ClickHouse) | One service, two purposes. RAM-conscious reuse instead of spinning up a separate BI tool like Metabase or Superset. |
 | **Data Lineage** | **Marquez & OpenLineage** | Visualizes PySpark job data lineage | Provides full observability into dataset lineage and job execution without heavy manual instrumentation. Uses Kafka transport for efficiency. |
 | **Metrics** | **Prometheus** | Scrapes Kafka/Spark/NiFi/Postgres exporters | Standard pull-based metrics with extremely low overhead. |
@@ -52,7 +53,7 @@ Every tool in this stack was selected deliberately to maximize performance while
 To get the full pipeline running locally on your laptop, ensure you have **Docker**, **Docker Compose**, and **Make** installed. 
 
 ### 1. Start Infrastructure
-Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, NiFi, and Grafana:
+Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, NiFi, Grafana, and **Prefect**:
 ```bash
 make up
 ```
@@ -72,7 +73,7 @@ Initialize the Kafka topics and start the PySpark Structured Streaming worker, w
 make stream-job
 ```
 
-Simulate live CDC events and clickstream activity in a separate terminal:
+Simulate live CDC events and clickstream activity in a separate terminal. The CDC poller is now orchestrated by Prefect:
 ```bash
 make stream-cdc
 make stream-clickstream
@@ -87,15 +88,12 @@ make batch
 ```
 > *Note: `make batch` starts the on-demand Spark batch worker, submits the full ETL job (`bronze_to_silver.py`), and stops the worker again when it finishes (if the worker is left running, `make batch-stop` stops it).*
 
-**Automated Schedule:**
-To start the background daemon that automatically triggers the batch pipeline at 02:00 AM every night:
+**Automated Schedule (Prefect):**
+The Prefect server and worker run automatically via the `core` profile. To deploy and run the nightly batch scheduler via Prefect:
 ```bash
 make schedule
 ```
-You can also customize the interval using the `INTERVAL` parameter (e.g., `daily`, `2h` for every 2 hours, `30m` for every 30 minutes):
-```bash
-make schedule INTERVAL=2h
-```
+Monitor the execution, retries, and logs in the Prefect UI at `http://localhost:4200`.
 
 ### 5. View Dashboards
 Navigate to `http://localhost:3000` to access Grafana (Default credentials are configured in `.env`). The predefined dashboards pull directly from the ClickHouse layer.
@@ -120,6 +118,7 @@ Run the offline test suite locally with `make test` (Spark/Iceberg-dependent tes
 For more detailed information, please refer to the specific documentation guides located throughout the repository:
 
 - **[Architecture & Design Decisions](docs/DECISION.md)**: The single source of truth for the platform's architectural paradigm, tool selection justifications, and structural implementations.
+- **[Orchestration Guide (Prefect)](docs/ORCHESTRATOR.md)**: Describes the Prefect 3.x infrastructure, deployment details, and flow configurations replacing the legacy scheduler.
 
 - **[Data Dictionary & Schema Contract](docs/DATA_DICTIONARY.md)**: Details the exact lineage paths and precise schema mapping from Bronze through Gold layers.
 - **[Infrastructure Guide](docs/INFRASTRUCTURE_GUIDE.md)**: Maps the Docker profiles, environment variables, mapped ports, and teardown commands.
@@ -144,24 +143,31 @@ For more detailed information, please refer to the specific documentation guides
 ├── README.md               # This file
 ├── CONTRIBUTING.md         # Developer setup and PR guide
 ├── docker-compose.yml      # Multi-container orchestration definitions
+├── pyproject.toml          # Project configuration, dependencies, and lint settings
+├── metadata/               # Dynamic Metadata Layer (datasets, contracts, lineage, quality, ownership JSONs)
 ├── data/
 │   ├── lakehouse/          # Iceberg warehouse directory (mounted to Spark containers)
 │   └── raw/                # Local data generation outputs
-├── docs/                   # Extended project documentation
+├── docs/                   # Extended project documentation, architecture, & runbooks
 ├── infra/
-│   ├── docker/             # Dockerfiles and DB Initialization scripts (SQL)
-│   ├── grafana/            # Provisioned dashboards and datasources
-│   └── prometheus/         # Metrics configurations
+│   ├── docker/             # Dockerfiles and database initialization scripts (Postgres, ClickHouse, Spark)
+│   ├── grafana/            # Provisioned dashboards (KPIs, quality, ops) and alert rules
+│   └── prometheus/         # Prometheus metrics scrape configurations
+├── notebooks/              # Jupyter notebooks for data analysis and prototyping
+├── scripts/                # Bootstrap and helper shell scripts (wait-for-services, database seeding)
 ├── src/
-│   └── dataone/
-│       ├── batch/          # Batch ETL pipeline scripts (bronze_to_silver.py, scd2)
-│       ├── config.py       # Centralized env/credential management
-│       ├── generators/     # Synthetic data generators (orders, reviews, clickstream)
-│       ├── ingestion/      # CDC Simulator to pull WAL/Updated columns from Postgres
-│       ├── orchestration/  # Lightweight daemon scheduler (scheduler.py)
-│       ├── quality/        # Custom PySpark Data Quality validators
-│       ├── streaming/      # Spark Structured Streaming job (Kafka -> Bronze)
-│       └── utils/          # Spark session builders, Iceberg DDL helpers, schemas
+│   ├── dataone/
+│   │   ├── batch/          # Batch ETL pipeline scripts (bronze_to_silver, SCD Type 2)
+│   │   ├── config.py       # Centralized environment variable and credential management
+│   │   ├── generators/     # Synthetic data generators (orders, reviews, clickstream, campaigns)
+│   │   ├── ingestion/      # CDC Simulator and Kafka producers
+│   │   ├── lineage/        # Reusable internal lineage abstraction and OpenLineage emitter
+│   │   ├── metadata/       # Metadata registry and contract validation logic
+│   │   ├── orchestration/  # Lightweight orchestration daemons (nightly batch and CDC polling)
+│   │   ├── quality/        # Custom PySpark Data Quality validators and gates
+│   │   ├── streaming/      # Spark Structured Streaming job (Kafka -> Bronze Lakehouse)
+│   │   └── utils/          # Spark session builders, Iceberg helpers, schemas, and logging
+│   └── nifi_flows/         # Apache NiFi template flow definitions for API/CSV ingestion
 └── tests/
     ├── conftest.py         # Pytest fixtures for Spark and Iceberg
     └── test_*.py           # Test suites for ETL, SCD2, Quality, and Generators

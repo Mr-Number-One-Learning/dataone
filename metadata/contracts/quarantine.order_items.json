@@ -1,0 +1,47 @@
+{
+  "dataset": "quarantine.order_items",
+  "schema_version": "1.0.0",
+  "allowed_schema_evolution": "backward",
+  "primary_keys": [
+    "order_item_id"
+  ],
+  "business_keys": [
+    "order_item_id"
+  ],
+  "columns": [
+    {
+      "name": "order_item_id",
+      "type": "BIGINT",
+      "nullable": false
+    },
+    {
+      "name": "order_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "product_id",
+      "type": "BIGINT",
+      "nullable": true
+    },
+    {
+      "name": "quantity",
+      "type": "INTEGER",
+      "nullable": true
+    },
+    {
+      "name": "unit_price",
+      "type": "DECIMAL(10,2)",
+      "nullable": true
+    },
+    {
+      "name": "_quarantine_reason",
+      "type": "STRING",
+      "nullable": true
+    }
+  ],
+  "partition_by": null,
+  "sort_order": [
+    "order_item_id"
+  ]
+}
