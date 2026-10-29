@@ -23,11 +23,6 @@ import contextlib
 import glob
 import os
 import shutil
-import time
-import typing
-import urllib.error
-import urllib.request
-from base64 import b64encode
 from datetime import date
 
 import psycopg2
@@ -36,12 +31,33 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import DateType, DoubleType, LongType, StringType, StructField, StructType
 from pyspark.sql.window import Window
 
+from dataone.batch.clickhouse_sync import (  # noqa: F401  (re-exported)
+    _clickhouse_query,
+    _truncate_clickhouse_tables,
+    load_clickhouse_marts,
+)
+from dataone.batch.gold_marts import (  # noqa: F401  (re-exported)
+    build_campaign_effectiveness,
+    build_conversion_rate,
+    build_customer_clv,
+    build_customer_segments,
+    build_daily_sales,
+    build_dim_campaign,
+    build_dim_date,
+    build_dim_product,
+    build_fact_order_items,
+    build_funnel_conversion,
+    build_product_sentiment,
+    build_quality_gate_summary,
+    build_quarantine_summary,
+    build_roas,
+    build_top_products,
+)
 from dataone.batch.scd2_customer_dim import apply_scd2_merge
-from dataone.config import clickhouse, postgres
-from dataone.quality.validators import QualityResult, reconcile_row_counts, run_quality_gate
+from dataone.config import postgres
+from dataone.quality.validators import reconcile_row_counts, run_quality_gate
 from dataone.utils.iceberg_helpers import (
     bootstrap_namespaces_sql,
-    make_surrogate_key,
     table_identifier,
 )
 from dataone.utils.logging_config import get_logger
@@ -451,54 +467,6 @@ def merge_into_silver(spark: SparkSession, df: DataFrame, table_name: str, merge
     )
 
 
-def build_fact_order_items(
-    orders_df: DataFrame,
-    order_items_df: DataFrame,
-    products_df: DataFrame,
-    customer_dim_full_df: DataFrame,
-) -> DataFrame:
-    """
-    One row per order line item — joining orders (Kafka CDC via the
-    lakehouse) with order_items and products (direct JDBC) is the
-    "joins/merge from multiple data sources" requirement in practice, not
-    just in name.
-
-    Enriches the fact row with surrogate keys for every conformed dimension
-    (date_key, sk_product_id, sk_campaign_id) so the Gold Star Schema
-    joins exclusively on deterministic hash keys.
-    """
-    return (
-        order_items_df.alias("oi")
-        .join(orders_df.alias("o"), on="order_id", how="inner")
-        .join(F.broadcast(products_df).alias("p"), on="product_id", how="inner")
-        .join(
-            F.broadcast(customer_dim_full_df).alias("c"),
-            on=(F.col("o.customer_id") == F.col("c.customer_id"))
-            & (F.col("o.order_date") >= F.col("c.valid_from"))
-            & (F.col("c.valid_to").isNull() | (F.col("o.order_date") < F.col("c.valid_to"))),
-            how="inner",
-        )
-        .select(
-            F.col("o.order_id"),
-            F.col("c.sk_customer_id"),
-            F.col("o.customer_id"),
-            F.col("o.order_date"),
-            F.col("o.status"),
-            F.col("oi.product_id"),
-            F.col("oi.quantity").cast("long"),
-            F.col("oi.unit_price").cast("double"),
-            (F.col("oi.quantity") * F.col("oi.unit_price")).cast("double").alias("line_total"),
-            F.col("o.campaign_id"),
-        )
-        .withColumn("date_key", F.date_format(F.to_date("order_date"), "yyyyMMdd").cast("int"))
-        .withColumn("sk_product_id", make_surrogate_key("product_id"))
-        .withColumn(
-            "sk_campaign_id",
-            F.when(F.col("campaign_id").isNotNull(), make_surrogate_key("campaign_id")),
-        )
-    )
-
-
 @F.udf(returnType=DoubleType())
 def _sentiment_udf(text: str | None) -> float | None:
     """Lightweight polarity score in [-1, 1]. The import lives inside the
@@ -575,311 +543,6 @@ def build_silver_order_items(bronze_df: DataFrame) -> DataFrame:
     )
 
 
-def build_product_sentiment(silver_reviews_df: DataFrame, products_df: DataFrame) -> DataFrame:
-    """Builds the product sentiment summary mart.
-
-    Args:
-        silver_reviews_df (DataFrame): The silver reviews dataframe.
-        products_df (DataFrame): The products dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing sentiment metrics aggregated by product.
-    """
-    agg = silver_reviews_df.groupBy("product_id").agg(
-        F.count("*").alias("review_count"),
-        F.avg("rating").alias("avg_rating"),
-        F.avg("sentiment_score").alias("avg_sentiment"),
-        (F.sum(F.col("verified_purchase").cast("int")) / F.count("*")).alias("pct_verified"),
-    )
-    return agg.join(
-        products_df.select("product_id", F.col("name").alias("product_name"), "category"),
-        on="product_id",
-        how="left",
-    )
-
-
-def build_daily_sales(fact_order_items_df: DataFrame) -> DataFrame:
-    """
-    True calendar-day rolling 7/30-day revenue averages — window functions
-    over an explicit day-ordinal column (via datediff), not row count, so
-    days with zero orders don't silently shift the window.
-    """
-    daily = (
-        fact_order_items_df.groupBy(F.to_date("order_date").alias("sales_date"))
-        .agg(
-            F.countDistinct("order_id").alias("order_count"),
-            F.sum("line_total").alias("total_revenue"),
-        )
-        .withColumn(
-            "_day_ordinal", F.datediff(F.col("sales_date"), F.lit("1970-01-01").cast("date"))
-        )
-    )
-    window_7d = Window.orderBy("_day_ordinal").rangeBetween(-6, 0)
-    window_30d = Window.orderBy("_day_ordinal").rangeBetween(-29, 0)
-    return (
-        daily.withColumn("revenue_7d_avg", F.avg("total_revenue").over(window_7d))
-        .withColumn("revenue_30d_avg", F.avg("total_revenue").over(window_30d))
-        .select("sales_date", "order_count", "total_revenue", "revenue_7d_avg", "revenue_30d_avg")
-    )
-
-
-def build_top_products(fact_order_items_df: DataFrame, products_df: DataFrame) -> DataFrame:
-    """RANK() per category by revenue — the other named window-function
-    requirement (pivoting/ranking)."""
-    joined = fact_order_items_df.join(F.broadcast(products_df), on="product_id", how="inner")
-    agg = joined.groupBy("product_id", "category", F.col("name").alias("product_name"), "sku").agg(
-        F.sum("quantity").alias("units_sold"),
-        F.sum("line_total").alias("revenue"),
-    )
-    rank_window = Window.partitionBy("category").orderBy(F.col("revenue").desc())
-    return agg.withColumn("rank_in_category", F.rank().over(rank_window)).select(
-        "product_id", "product_name", "sku", "category", "units_sold", "revenue", "rank_in_category"
-    )
-
-
-def build_customer_segments(
-    fact_order_items_df: DataFrame, customer_dim_full_df: DataFrame
-) -> DataFrame:
-    """
-    Point-in-time join against the FULL SCD2 dimension (all versions, not
-    just is_current): each order matches the customer version whose
-    [valid_from, valid_to) interval contains the order_date, so revenue is
-    attributed to the segment the customer actually held when they ordered —
-    correct historical analysis for customers who changed tiers. Orders
-    predating a customer's first captured version have no matching interval
-    and are excluded — same behavior as an inner join on an unknown customer.
-    """
-    joined = fact_order_items_df.alias("f").join(
-        customer_dim_full_df.alias("c"),
-        on=(
-            (F.col("f.customer_id") == F.col("c.customer_id"))
-            & (F.col("f.order_date") >= F.col("c.valid_from"))
-            & (F.col("c.valid_to").isNull() | (F.col("f.order_date") < F.col("c.valid_to")))
-        ),
-        how="inner",
-    )
-    return (
-        joined.groupBy(F.col("c.segment").alias("segment"))
-        .agg(
-            F.countDistinct("f.customer_id").alias("customer_count"),
-            F.countDistinct("f.order_id").alias("_order_count"),
-            F.sum("f.line_total").alias("total_revenue"),
-        )
-        .withColumn("avg_order_value", F.col("total_revenue") / F.col("_order_count"))
-        .select("segment", "customer_count", "total_revenue", "avg_order_value")
-    )
-
-
-def build_conversion_rate(clickstream_df: DataFrame) -> DataFrame:
-    """Builds the daily conversion rate mart based on clickstream sessions.
-
-    Args:
-        clickstream_df (DataFrame): The silver clickstream dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing daily session and checkout completion metrics.
-    """
-    daily = clickstream_df.withColumn("activity_date", F.to_date("ts"))
-    sessions = daily.groupBy("activity_date").agg(F.countDistinct("session_id").alias("sessions"))
-    completions = (
-        daily.filter(F.col("event_type") == "checkout_complete")
-        .groupBy("activity_date")
-        .agg(F.countDistinct("session_id").alias("checkout_completions"))
-    )
-    return (
-        sessions.join(completions, on="activity_date", how="left")
-        .fillna(0, subset=["checkout_completions"])
-        .withColumn("conversion_rate", F.col("checkout_completions") / F.col("sessions"))
-    )
-
-
-def build_campaign_effectiveness(campaigns_df: DataFrame) -> DataFrame:
-    """Builds the campaign effectiveness mart.
-
-    Args:
-        campaigns_df (DataFrame): The campaigns dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing campaign performance metrics, including cost per conversion.
-    """
-    return campaigns_df.select(
-        "campaign_id", "name", "channel", "spend", "clicks", "conversions"
-    ).withColumn(
-        "cost_per_conversion",
-        F.when(F.col("conversions") > 0, F.col("spend") / F.col("conversions")).otherwise(
-            F.lit(None)
-        ),
-    )
-
-
-def build_dim_date(
-    spark: SparkSession, start: str | None = None, end: str | None = None
-) -> DataFrame:
-    """
-    Calendar dimension. Range comes from DIM_DATE_START/DIM_DATE_END env
-    vars (defaults below) — and main() rebuilds this table every run
-    (createOrReplace, it's only ~1k rows), so widening the env range is
-    picked up immediately instead of being frozen at first bootstrap.
-    """
-    start = start or os.getenv("DIM_DATE_START", "2025-01-01")
-    end = end or os.getenv("DIM_DATE_END", "2027-12-31")
-    date_range = spark.sql(
-        f"SELECT sequence(DATE '{start}', DATE '{end}', INTERVAL 1 DAY) AS dates"
-    )
-    return (
-        date_range.select(F.explode("dates").alias("_date"))
-        .withColumn("date_key", F.date_format("_date", "yyyyMMdd").cast("int"))
-        .withColumn("calendar_date", F.col("_date").cast("date"))
-        .withColumn("day_of_week", F.dayofweek("_date").cast("int"))
-        .withColumn("day_name", F.date_format("_date", "EEEE"))
-        .withColumn("week_of_year", F.weekofyear("_date").cast("int"))
-        .withColumn("month", F.month("_date").cast("int"))
-        .withColumn("month_name", F.date_format("_date", "MMMM"))
-        .withColumn("quarter", F.quarter("_date").cast("int"))
-        .withColumn("year", F.year("_date").cast("int"))
-        .withColumn("is_weekend", F.dayofweek("_date").isin([1, 7]).cast("boolean"))
-        .drop("_date")
-    )
-
-
-def build_dim_product(products_df: DataFrame) -> DataFrame:
-    """Builds the product dimension table.
-
-    Args:
-        products_df (DataFrame): The raw products dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing the product dimension attributes and surrogate keys.
-    """
-    return products_df.select(
-        "product_id",
-        "sku",
-        F.col("name").alias("product_name"),
-        "category",
-        F.col("unit_price").alias("current_price"),
-    ).withColumn("sk_product_id", make_surrogate_key("product_id"))
-
-
-def build_dim_campaign(campaigns_df: DataFrame) -> DataFrame:
-    """Builds the campaign dimension table.
-
-    Args:
-        campaigns_df (DataFrame): The raw campaigns dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing the campaign dimension attributes and surrogate keys.
-    """
-    return campaigns_df.select(
-        "campaign_id", "name", "channel", "start_date", "end_date"
-    ).withColumn("sk_campaign_id", make_surrogate_key("campaign_id"))
-
-
-def build_customer_clv(
-    fact_order_items_df: DataFrame, customer_dim_current_df: DataFrame
-) -> DataFrame:
-    """Builds the Customer Lifetime Value (CLV) mart.
-
-    Args:
-        fact_order_items_df (DataFrame): The fact order items dataframe.
-        customer_dim_current_df (DataFrame): The current customer dimension dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing CLV metrics per customer.
-    """
-    clv = (
-        fact_order_items_df.groupBy("customer_id")
-        .agg(
-            F.countDistinct("order_id").alias("total_orders"),
-            F.sum("line_total").alias("total_spend"),
-            F.min(F.to_date("order_date")).alias("first_order_date"),
-            F.max(F.to_date("order_date")).alias("last_order_date"),
-        )
-        .withColumn("avg_order_value", F.col("total_spend") / F.col("total_orders"))
-        .withColumn("days_since_last_order", F.datediff(F.current_date(), F.col("last_order_date")))
-    )
-    return clv.join(
-        customer_dim_current_df.select("customer_id", "full_name", "segment"),
-        on="customer_id",
-        how="left",
-    ).select(
-        "customer_id",
-        "full_name",
-        "total_orders",
-        "total_spend",
-        "first_order_date",
-        "last_order_date",
-        "avg_order_value",
-        "days_since_last_order",
-        "segment",
-    )
-
-
-def build_funnel_conversion(clickstream_df: DataFrame) -> DataFrame:
-    """Builds the funnel conversion mart.
-
-    Args:
-        clickstream_df (DataFrame): The silver clickstream dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing daily funnel conversion rates.
-    """
-    EVENT_TYPES = ["page_view", "add_to_cart", "checkout_start", "checkout_complete"]
-    daily = clickstream_df.withColumn("activity_date", F.to_date("ts"))
-    pivot = (
-        daily.groupBy("activity_date")
-        .pivot("event_type", EVENT_TYPES)
-        .agg(F.countDistinct("session_id"))
-        .fillna(0)
-    )
-    return pivot.withColumn(
-        "cart_to_checkout_rate",
-        F.when(F.col("add_to_cart") > 0, F.col("checkout_start") / F.col("add_to_cart")).otherwise(
-            F.lit(None)
-        ),
-    ).withColumn(
-        "checkout_to_purchase_rate",
-        F.when(
-            F.col("checkout_start") > 0, F.col("checkout_complete") / F.col("checkout_start")
-        ).otherwise(F.lit(None)),
-    )
-
-
-def build_roas(fact_order_items_df: DataFrame, campaigns_df: DataFrame) -> DataFrame:
-    """Builds the Return on Ad Spend (ROAS) mart.
-
-    Args:
-        fact_order_items_df (DataFrame): The fact order items dataframe.
-        campaigns_df (DataFrame): The campaigns dataframe.
-
-    Returns:
-        DataFrame: A dataframe containing ROAS metrics per campaign.
-    """
-    attributed_revenue = (
-        fact_order_items_df.filter(F.col("campaign_id").isNotNull())
-        .groupBy("campaign_id")
-        .agg(F.sum("line_total").alias("attributed_revenue"))
-    )
-    return (
-        campaigns_df.join(attributed_revenue, on="campaign_id", how="left")
-        .withColumn(
-            "roas",
-            F.when(F.col("spend") > 0, F.col("attributed_revenue") / F.col("spend")).otherwise(
-                F.lit(None)
-            ),
-        )
-        .select(
-            "campaign_id",
-            "name",
-            "channel",
-            "start_date",
-            "end_date",
-            "spend",
-            "attributed_revenue",
-            "roas",
-        )
-    )
-
-
 def write_overwrite_partitions(df: DataFrame, layer: str, table_name: str) -> None:
     """Full-recompute-per-run idempotency: replaces only the partitions
     present in df (Iceberg's dynamic partition overwrite), leaving
@@ -899,231 +562,6 @@ def write_append(df: DataFrame, layer: str, table_name: str) -> None:
     log.info("write_append.done", table=target)
 
 
-_CLICKHOUSE_HTTP_TIMEOUT_SECONDS = 60
-_CLICKHOUSE_RETRIES = 3
-
-
-def _clickhouse_query(query: str) -> None:
-    """
-    Fire a DDL/maintenance statement at ClickHouse over HTTP. Bounded by a
-    timeout (a hung socket must not hang the whole batch run) and retried a
-    few times with backoff — transient ClickHouse restarts shouldn't fail
-    the nightly job. On an HTTP error the response body (ClickHouse puts the
-    real error text there) is surfaced in the exception.
-    """
-    url = f"http://{clickhouse.host}:{clickhouse.port}/"
-    auth_str = f"{clickhouse.user}:{clickhouse.password}"
-    auth_b64 = b64encode(auth_str.encode("utf-8")).decode("ascii")
-    headers = {"Authorization": f"Basic {auth_b64}"}
-    req = urllib.request.Request(url, data=query.encode("utf-8"), headers=headers, method="POST")
-
-    last_exc: Exception | None = None
-    for attempt in range(1, _CLICKHOUSE_RETRIES + 1):
-        try:
-            with urllib.request.urlopen(req, timeout=_CLICKHOUSE_HTTP_TIMEOUT_SECONDS) as response:
-                response.read()
-            return
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")[:500]
-            last_exc = RuntimeError(f"ClickHouse HTTP {exc.code}: {body}")
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last_exc = exc
-        log.warning("clickhouse.query.retry", attempt=attempt, error=str(last_exc))
-        time.sleep(2**attempt)
-    if last_exc is not None:
-        raise last_exc
-    raise RuntimeError("ClickHouse query failed after retries")
-
-
-def _truncate_clickhouse_tables(table_names: typing.Iterable[str]) -> None:
-    for t in table_names:
-        try:
-            _clickhouse_query(f"TRUNCATE TABLE IF EXISTS {clickhouse.db}.{t}")
-            log.info("clickhouse.truncate.done", table=t)
-        except Exception as e:
-            log.error("clickhouse.truncate.failed", table=t, error=str(e))
-            raise
-
-
-def load_clickhouse_marts(gold_tables: dict[str, DataFrame]) -> None:
-    """
-    Mirrors each freshly computed gold DataFrame into its ClickHouse table
-    for Grafana — same full-recompute-each-run idempotency as the Iceberg
-    gold tables. We manually TRUNCATE first, then append via JDBC so the
-    ClickHouse-side MergeTree table definition/engine settings survive
-    (created in infra/docker/clickhouse/init/002_marts.sql) without Spark
-    falling back to DROP/CREATE.
-    """
-    jdbc_url = f"jdbc:clickhouse://{clickhouse.host}:{clickhouse.port}/{clickhouse.db}"
-
-    for table_name, df in gold_tables.items():
-        staging = f"{table_name}_staging"
-        try:
-            # Step 1: Truncate and fill the STAGING table (target untouched if this fails)
-            _truncate_clickhouse_tables([staging])
-            (
-                df.write.format("jdbc")
-                .option("url", jdbc_url)
-                .option("dbtable", f"{clickhouse.db}.{staging}")
-                .option("user", clickhouse.user)
-                .option("password", clickhouse.password)
-                .option("driver", "com.clickhouse.jdbc.ClickHouseDriver")
-                .mode("append")
-                .save()
-            )
-            # Step 2: Atomic swap — either both succeed or neither takes effect
-            _clickhouse_query(
-                f"EXCHANGE TABLES {clickhouse.db}.{table_name} AND {clickhouse.db}.{staging}"
-            )
-            log.info("load_clickhouse_marts.done", table=table_name)
-        except Exception as exc:
-            log.error(
-                "load_clickhouse_marts.failed", table=table_name, error=str(exc), exc_info=True
-            )
-            # Best-effort staging cleanup — target table is unaffected. Guarded
-            # so a cleanup failure can't mask the original exception.
-            try:
-                _clickhouse_query(f"TRUNCATE TABLE IF EXISTS {clickhouse.db}.{staging}")
-            except Exception:
-                log.warning("load_clickhouse_marts.staging_cleanup_failed", table=staging)
-            raise
-
-
-def build_quality_gate_summary(
-    spark: SparkSession,
-    batch_date: date,
-    results: dict[str, QualityResult | None],
-) -> DataFrame:
-    """One row per dataset for this run: (batch_date, table_name, passed_count,
-    quarantined_count). Built from counts run_quality_gate() already computed —
-    falls back to querying Iceberg tables directly when running in modular stage mode."""
-    rows = []
-    for table_name, result in results.items():
-        if result is not None:
-            rows.append((batch_date, table_name, result.passed_count, result.quarantined_count))
-        else:
-            try:
-                if table_name == "campaigns":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("silver", "campaigns"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "campaigns"))
-                        .count()
-                    )
-                elif table_name == "customers":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("silver", "customers"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "customers"))
-                        .count()
-                    )
-                elif table_name == "orders":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("silver", "orders"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "orders"))
-                        .count()
-                    )
-                elif table_name == "reviews":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("silver", "reviews"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "reviews"))
-                        .count()
-                    )
-                elif table_name == "clickstream":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("silver", "clickstream"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "clickstream"))
-                        .count()
-                    )
-                elif table_name == "products":
-                    passed_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("gold", "dim_product"))
-                        .count()
-                    )
-                    quar_cnt = (
-                        spark.read.format("iceberg")
-                        .load(table_identifier("quarantine", "products"))
-                        .count()
-                    )
-                else:
-                    passed_cnt, quar_cnt = 0, 0
-                rows.append((batch_date, table_name, passed_cnt, quar_cnt))
-            except Exception as e:
-                log.warning(
-                    "failed_to_query_quality_counts_for_summary", table=table_name, error=str(e)
-                )
-                rows.append((batch_date, table_name, 0, 0))
-    return spark.createDataFrame(
-        rows, schema="batch_date date, table_name string, passed_count long, quarantined_count long"
-    )
-
-
-def build_quarantine_summary(spark: SparkSession) -> DataFrame:
-    """Builds a daily summary of quarantined rows across all pipelines.
-
-    Args:
-        spark (SparkSession): The active Spark session.
-
-    Returns:
-        DataFrame: A dataframe containing daily quarantine counts aggregated by reason.
-    """
-
-    def _agg(table_name: str, date_col: str) -> DataFrame:
-        q_df = spark.read.format("iceberg").load(table_identifier("quarantine", table_name))
-        return (
-            q_df.withColumn("batch_date", F.to_date(F.col(date_col)))
-            .withColumn("table_name", F.lit(table_name))
-            .groupBy(
-                "batch_date", "table_name", F.col("_quarantine_reason").alias("failure_reason")
-            )
-            .agg(F.count("*").alias("row_count"))
-        )
-
-    orders_fact_agg = _agg("fact_order_items", "order_date")
-    orders_raw_agg = _agg("orders", "captured_at")
-    campaigns_agg = _agg("campaigns", "start_date")
-    reviews_agg = _agg("reviews", "submitted_at")
-    customers_agg = _agg("customers", "captured_at")
-    products_agg = _agg("products", "updated_at")
-    clickstream_agg = _agg("clickstream", "ts")
-
-    # We aggregate again in case multiple tables have the exact same failure reason on the same date
-    return (
-        orders_fact_agg.unionByName(orders_raw_agg)
-        .unionByName(campaigns_agg)
-        .unionByName(reviews_agg)
-        .unionByName(customers_agg)
-        .unionByName(products_agg)
-        .unionByName(clickstream_agg)
-        .groupBy("batch_date", "table_name", "failure_reason")
-        .agg(F.sum("row_count").alias("row_count"))
-    )
-
-
 def main() -> None:
     """Main entrypoint for the bronze-to-silver batch pipeline.
 
@@ -1134,8 +572,6 @@ def main() -> None:
     args = parse_args()
     stage = args.stage
     log.info("bronze_to_silver.start", start=args.start, end=args.end, stage=stage)
-
-    from datetime import date
 
     from dataone.lineage.tracker import LineageTracker
     from dataone.metadata.contracts import validate_schema
