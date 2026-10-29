@@ -25,6 +25,10 @@ import uuid
 
 from prefect import flow, task
 
+from dataone.utils.logging_config import get_logger
+
+log = get_logger(__name__)
+
 
 class BatchJobFailed(RuntimeError):
     pass
@@ -95,7 +99,7 @@ No database pipeline runs recorded since {flow_start_time.isoformat()}."""
         )
     except Exception as e:
         # Observability helper failures should not fail the pipeline itself
-        print(f"Failed to publish Prefect artifact: {e}")
+        log.warning("publish_run_summary.failed", error=str(e))
 
 
 def _run_stage(
