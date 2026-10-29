@@ -3,6 +3,7 @@ Tests for the Spark+Iceberg catalog wiring helpers. All pure string/dict
 building — no Spark session needed, which is exactly why this module is
 fully testable while the Spark jobs that consume it are not.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -16,7 +17,10 @@ def test_spark_catalog_conf_has_required_keys():
     name = "dataone_catalog"
     assert conf[f"spark.sql.catalog.{name}"] == "org.apache.iceberg.spark.SparkCatalog"
     assert conf[f"spark.sql.catalog.{name}.catalog-impl"] == "org.apache.iceberg.jdbc.JdbcCatalog"
-    assert conf[f"spark.sql.catalog.{name}.uri"] == f"jdbc:postgresql://{postgres.host}:{postgres.port}/{postgres.db}"
+    assert (
+        conf[f"spark.sql.catalog.{name}.uri"]
+        == f"jdbc:postgresql://{postgres.host}:{postgres.port}/{postgres.db}"
+    )
     assert conf[f"spark.sql.catalog.{name}.jdbc.user"] == postgres.user
     assert conf[f"spark.sql.catalog.{name}.jdbc.password"] == postgres.password
     assert conf[f"spark.sql.catalog.{name}.warehouse"].startswith("file://")
@@ -34,7 +38,9 @@ def test_table_identifier_rejects_unknown_layer():
 
 
 def test_create_namespace_sql():
-    assert ih.create_namespace_sql("silver") == "CREATE NAMESPACE IF NOT EXISTS dataone_catalog.silver"
+    assert (
+        ih.create_namespace_sql("silver") == "CREATE NAMESPACE IF NOT EXISTS dataone_catalog.silver"
+    )
 
 
 def test_bootstrap_namespaces_sql_covers_all_layers():

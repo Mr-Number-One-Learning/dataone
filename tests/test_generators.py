@@ -5,6 +5,7 @@ mocked, except for bulk_copy's Postgres connection, which is faked here
 since bulk_copy itself only depends on the cursor/copy_expert interface,
 not psycopg2 directly.
 """
+
 from __future__ import annotations
 
 import io
@@ -16,10 +17,10 @@ from dataone.generators.orders_generator import _zipf_customer_assignment
 from dataone.generators.reviews_generator import build_review
 from dataone.utils.db_bulk import bulk_copy
 
-
 # ---------------------------------------------------------------------------
 # bulk_copy — pure batching logic, no real Postgres needed
 # ---------------------------------------------------------------------------
+
 
 class _FakeCursor:
     def __init__(self):
@@ -42,6 +43,7 @@ class _FakeConn:
 
 def test_bulk_copy_writes_all_rows_in_batches(monkeypatch):
     import psycopg2.extensions
+
     monkeypatch.setattr(psycopg2.extensions, "quote_ident", lambda s, scope=None: f'"{s}"')
     conn = _FakeConn()
     rows = [(i, f"row-{i}") for i in range(1, 251)]  # 250 rows, batch_size=100 -> 3 flushes
@@ -55,6 +57,7 @@ def test_bulk_copy_writes_all_rows_in_batches(monkeypatch):
 
 def test_bulk_copy_empty_input(monkeypatch):
     import psycopg2.extensions
+
     monkeypatch.setattr(psycopg2.extensions, "quote_ident", lambda s, scope=None: f'"{s}"')
     conn = _FakeConn()
     written = bulk_copy(conn, "t", ["id"], iter([]), batch_size=100)
@@ -65,6 +68,7 @@ def test_bulk_copy_empty_input(monkeypatch):
 # ---------------------------------------------------------------------------
 # orders_generator — customer skew
 # ---------------------------------------------------------------------------
+
 
 def test_zipf_customer_assignment_covers_all_orders():
     assignment = _zipf_customer_assignment(n_orders=5_000, max_customer_id=500)
@@ -93,6 +97,7 @@ def test_zipf_customer_assignment_is_skewed_but_not_absurd():
 # clickstream_generator
 # ---------------------------------------------------------------------------
 
+
 def test_build_event_required_fields():
     event = build_event(max_customer_id=100, max_product_id=20, session_id="s1", logged_in=True)
     for field in ("event_id", "session_id", "event_type", "product_id", "ts", "customer_id"):
@@ -110,6 +115,7 @@ def test_build_event_anonymous_has_no_customer_id():
 # reviews_generator — variable schema is the point, not a bug
 # ---------------------------------------------------------------------------
 
+
 def test_build_review_schema_genuinely_varies():
     from faker import Faker
 
@@ -123,7 +129,9 @@ def test_build_review_schema_genuinely_varies():
 
 def test_build_review_required_fields_always_present(monkeypatch):
     from faker import Faker
+
     import dataone.generators.reviews_generator as rg
+
     monkeypatch.setattr(rg, "GEN_MESSINESS_RATE", 0.0)
 
     faker = Faker()
@@ -138,10 +146,12 @@ def test_build_review_required_fields_always_present(monkeypatch):
 # campaign_generator
 # ---------------------------------------------------------------------------
 
+
 def test_build_campaign_row_fields_and_invariants(monkeypatch):
     import dataone.generators.campaign_generator as cg
+
     monkeypatch.setattr(cg, "GEN_MESSINESS_RATE", 0.0)
-    
+
     row = build_campaign_row(campaign_id=1)
     assert row["campaign_id"] == 1
     assert row["budget"] > 0

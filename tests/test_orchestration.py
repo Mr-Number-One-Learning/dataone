@@ -2,20 +2,19 @@
 Tests for the Prefect orchestration flows and tasks.
 Uses the task/flow .fn attributes to run raw Python functions without connecting to Prefect API.
 """
+
 from __future__ import annotations
 
-import pytest
-import subprocess
-import psycopg2
-
-from dataone.orchestration import nightly_batch
-from dataone.orchestration import cdc_poll
 import os
+
+import psycopg2
+import pytest
+
+from dataone.orchestration import cdc_poll, nightly_batch
 
 # Disable Prefect API connectivity globally for tests to prevent hanging on server connection timeouts
 os.environ["PREFECT_API_URL"] = ""
 os.environ["PREFECT_API_KEY"] = ""
-
 
 
 class _FakeResult:
@@ -34,7 +33,9 @@ def test_nightly_batch_job_runs_bronze_to_silver(monkeypatch):
     monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
 
     # Run task function directly using .fn
-    nightly_batch.run_bronze_to_silver.fn(parent_run_id="fake-parent-id", parent_job_name="fake-parent-job")
+    nightly_batch.run_bronze_to_silver.fn(
+        parent_run_id="fake-parent-id", parent_job_name="fake-parent-job"
+    )
     assert len(calls) == 1
     assert calls[0][0] == ["make", "run-batch"]
     assert "START_DATE" not in calls[0][1]
@@ -57,7 +58,7 @@ def test_run_bronze_to_silver_with_backfill_dates(monkeypatch):
         parent_run_id="fake-parent-id",
         parent_job_name="fake-parent-job",
         start="2026-01-01",
-        end="2026-01-10"
+        end="2026-01-10",
     )
     assert len(calls) == 1
     assert calls[0][1]["START_DATE"] == "2026-01-01"
@@ -72,7 +73,9 @@ def test_run_bronze_to_silver_raises_on_failure(monkeypatch):
 
     # Run task function directly using .fn
     with pytest.raises(nightly_batch.BatchJobFailed):
-        nightly_batch.run_bronze_to_silver.fn(parent_run_id="fake-parent-id", parent_job_name="fake-parent-job")
+        nightly_batch.run_bronze_to_silver.fn(
+            parent_run_id="fake-parent-id", parent_job_name="fake-parent-job"
+        )
 
 
 def test_cdc_poll_flow_calls_init_and_tasks(monkeypatch):
@@ -84,24 +87,34 @@ def test_cdc_poll_flow_calls_init_and_tasks(monkeypatch):
     class FakeCursor:
         def execute(self, *args, **kwargs):
             pass
+
         def close(self):
             pass
+
         def __enter__(self):
             return self
+
         def __exit__(self, exc_type, exc_val, exc_tb):
             pass
 
     class FakeConn:
         def cursor(self):
             return FakeCursor()
+
         def close(self):
             pass
 
     monkeypatch.setattr(psycopg2, "connect", lambda dsn: FakeConn())
     monkeypatch.setattr(cdc_poll, "init_watermarks", cdc_poll.init_watermarks.fn)
     monkeypatch.setattr(cdc_poll, "poll_table", cdc_poll.poll_table.fn)
-    monkeypatch.setattr(cdc_poll, "ensure_watermark_table", lambda conn: init_called.pop() or init_called.append(True))
-    monkeypatch.setattr(cdc_poll, "poll_once", lambda conn, tbl, pk: poll_calls.append((tbl, pk)) or 10)
+    monkeypatch.setattr(
+        cdc_poll,
+        "ensure_watermark_table",
+        lambda conn: init_called.pop() or init_called.append(True),
+    )
+    monkeypatch.setattr(
+        cdc_poll, "poll_once", lambda conn, tbl, pk: poll_calls.append((tbl, pk)) or 10
+    )
 
     # Run flow function directly using .fn
     cdc_poll.cdc_poll.fn()
@@ -123,9 +136,13 @@ def test_run_stage_tasks(monkeypatch):
     monkeypatch.setattr(nightly_batch.subprocess, "run", fake_run)
 
     nightly_batch.run_ingest_bronze.fn(parent_run_id="id1", parent_job_name="job1")
-    nightly_batch.run_standardize_silver.fn(parent_run_id="id2", parent_job_name="job2", start="2026-01-01", end="2026-01-02")
+    nightly_batch.run_standardize_silver.fn(
+        parent_run_id="id2", parent_job_name="job2", start="2026-01-01", end="2026-01-02"
+    )
     nightly_batch.run_model_gold.fn(parent_run_id="id3", parent_job_name="job3")
-    nightly_batch.run_clickhouse_sync.fn(parent_run_id="id4", parent_job_name="job4", start="2026-01-01", end="2026-01-02")
+    nightly_batch.run_clickhouse_sync.fn(
+        parent_run_id="id4", parent_job_name="job4", start="2026-01-01", end="2026-01-02"
+    )
 
     assert len(calls) == 4
 
@@ -159,6 +176,7 @@ def test_run_stage_tasks(monkeypatch):
 def test_publish_run_summary(monkeypatch):
     """Verifies that publish_run_summary queries the DB and creates a markdown artifact in Prefect."""
     import datetime
+
     db_calls = []
     artifact_calls = []
 
@@ -211,6 +229,7 @@ def test_publish_run_summary(monkeypatch):
 
     # We mock create_markdown_artifact directly in prefect.artifacts module
     import prefect.artifacts
+
     monkeypatch.setattr(
         prefect.artifacts,
         "create_markdown_artifact",
@@ -236,5 +255,3 @@ def test_publish_run_summary(monkeypatch):
     assert "standardize_silver" in markdown
     assert "❌ Failed" in markdown
     assert "Some schema violation" in markdown
-
-

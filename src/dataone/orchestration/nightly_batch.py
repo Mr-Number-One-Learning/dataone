@@ -12,7 +12,9 @@ a ``parent`` run facet in its OpenLineage events — so Marquez can draw
 the orchestrator → job relationship without adding any Kafka dependency
 to this module.
 """
+
 import os
+
 # Prevent Prefect client from routing local API requests through system HTTP proxies
 os.environ["NO_PROXY"] = "localhost,127.0.0.1,dataone-prefect-server"
 os.environ["no_proxy"] = "localhost,127.0.0.1,dataone-prefect-server"
@@ -33,6 +35,7 @@ def publish_run_summary(flow_run_id: str, flow_start_time: datetime.datetime) ->
     """Queries _pipeline_runs for runs started after flow_start_time and publishes a Markdown artifact."""
     import psycopg2
     from prefect.artifacts import create_markdown_artifact
+
     from dataone.config import postgres
 
     try:
@@ -70,12 +73,18 @@ No database pipeline runs recorded since {flow_start_time.isoformat()}."""
 | :--- | :--- | :--- | :--- | :--- |
 """
             for job_name, status, processed, quarantined, error_msg, _ in rows:
-                status_str = "✅ Success" if status == "success" else "❌ Failed" if status == "failed" else "⏳ Running"
+                status_str = (
+                    "✅ Success"
+                    if status == "success"
+                    else "❌ Failed" if status == "failed" else "⏳ Running"
+                )
                 proc_val = f"{processed:,}" if processed is not None else "-"
                 quar_val = f"{quarantined:,}" if quarantined is not None else "-"
                 err_val = f"`{error_msg}`" if error_msg else "-"
                 display_name = job_name.replace("bronze_to_silver.", "")
-                markdown_report += f"| **{display_name}** | {status_str} | {proc_val} | {quar_val} | {err_val} |\n"
+                markdown_report += (
+                    f"| **{display_name}** | {status_str} | {proc_val} | {quar_val} | {err_val} |\n"
+                )
 
         markdown_report += "\n\n**🔗 Observability Quicklinks:** [Marquez Lineage UI](http://localhost:3001) | [Grafana Dashboards](http://localhost:3000)"
 
@@ -208,10 +217,18 @@ def backfill(start: str, end: str) -> None:
     flow_start_time = datetime.datetime.now(datetime.timezone.utc)
 
     try:
-        run_ingest_bronze(start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name)
-        run_standardize_silver(start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name)
-        run_model_gold(start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name)
-        run_clickhouse_sync(start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name)
+        run_ingest_bronze(
+            start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name
+        )
+        run_standardize_silver(
+            start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name
+        )
+        run_model_gold(
+            start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name
+        )
+        run_clickhouse_sync(
+            start=start, end=end, parent_run_id=flow_run_id, parent_job_name=flow_job_name
+        )
     finally:
         publish_run_summary(flow_run_id, flow_start_time)
 

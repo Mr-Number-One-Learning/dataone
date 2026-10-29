@@ -26,6 +26,14 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+# Line length is enforced by black; E501 only flags long strings/comments it
+# cannot wrap.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# These set env vars (e.g. NO_PROXY) before importing prefect/psycopg2 on purpose.
+"src/dataone/orchestration/*.py" = ["E402"]
+"src/dataone/generators/reviews_generator.py" = ["E402"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

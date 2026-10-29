@@ -4,6 +4,7 @@ Centralized configuration, loaded from environment variables (see .env.example).
 Every module in the package should import its settings from here rather than
 calling os.environ directly — keeps configuration discoverable in one place.
 """
+
 from __future__ import annotations
 
 import os
@@ -120,8 +121,7 @@ def _resolve_bootstrap_servers(raw: str) -> str:
 class PostgresConfig:
     host: str = _resolve_host(os.getenv("POSTGRES_HOST", "localhost"))
     port: int = _resolve_postgres_port(
-        os.getenv("POSTGRES_HOST", "postgres"),
-        int(os.getenv("POSTGRES_PORT", "5432"))
+        os.getenv("POSTGRES_HOST", "postgres"), int(os.getenv("POSTGRES_PORT", "5432"))
     )
     db: str = os.getenv("POSTGRES_DB", "dataone")
     user: str = os.getenv("POSTGRES_USER", "dataone")

@@ -7,6 +7,7 @@ Testability note: this needs a real Iceberg catalog to test (the
 `iceberg_spark` fixture in tests/conftest.py), not just a plain SparkSession,
 since MERGE INTO is an Iceberg-Spark-extension feature.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -14,7 +15,7 @@ from datetime import datetime, timezone
 
 from pyspark.sql import DataFrame, SparkSession
 
-from dataone.utils.iceberg_helpers import table_identifier, make_surrogate_key
+from dataone.utils.iceberg_helpers import table_identifier
 from dataone.utils.logging_config import get_logger
 
 log = get_logger(__name__)
@@ -41,7 +42,9 @@ def _format_timestamp_literal(ts: datetime) -> str:
     return ts.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
-def apply_scd2_merge(spark: SparkSession, incoming_df: DataFrame, as_of: datetime | None = None) -> None:
+def apply_scd2_merge(
+    spark: SparkSession, incoming_df: DataFrame, as_of: datetime | None = None
+) -> None:
     """Merges an incoming dataframe into the customer dimension (gold.dim_customer) as SCD Type 2.
 
     Contract: `incoming_df` must already be deduplicated to ONE row per
@@ -67,11 +70,11 @@ def apply_scd2_merge(spark: SparkSession, incoming_df: DataFrame, as_of: datetim
     Args:
         spark (SparkSession): The active Spark session.
         incoming_df (DataFrame): The deduplicated incoming customer dataframe.
-        as_of (datetime | None, optional): The effective timestamp for the merge. 
+        as_of (datetime | None, optional): The effective timestamp for the merge.
             Defaults to the current UTC time.
 
     Raises:
-        RuntimeError: If the incoming dataframe violates the deduplication contract 
+        RuntimeError: If the incoming dataframe violates the deduplication contract
             (multiple current rows per customer).
     """
     as_of = as_of or datetime.now(timezone.utc)

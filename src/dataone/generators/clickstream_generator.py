@@ -4,6 +4,7 @@ checkout events directly onto the Kafka 'clickstream' topic, at a configurable r
 
 Run: python -m dataone.generators.clickstream_generator
 """
+
 from __future__ import annotations
 
 import os
@@ -26,7 +27,11 @@ EVENTS_PER_SEC = int(os.getenv("GEN_CLICKSTREAM_EVENTS_PER_SEC", "200"))
 SEED = int(os.getenv("GEN_SEED", "42"))
 
 EVENT_TYPES = [
-    "page_view", "add_to_cart", "remove_from_cart", "checkout_start", "checkout_complete",
+    "page_view",
+    "add_to_cart",
+    "remove_from_cart",
+    "checkout_start",
+    "checkout_complete",
 ]
 EVENT_TYPE_WEIGHTS = [0.70, 0.15, 0.05, 0.06, 0.04]
 
@@ -77,7 +82,9 @@ def build_event(
     if random.random() < GEN_MESSINESS_RATE:
         noise_type = random.choice(["invalid_event_type", "null_session"])
         if noise_type == "invalid_event_type":
-            event["event_type"] = random.choice(["search_clicked", "scroll", "hover", "abandoned_tab"])
+            event["event_type"] = random.choice(
+                ["search_clicked", "scroll", "hover", "abandoned_tab"]
+            )
         elif noise_type == "null_session":
             event["session_id"] = None
 
@@ -102,7 +109,7 @@ def run(events_per_sec: int = EVENTS_PER_SEC) -> None:
     """Main loop for the clickstream generator.
 
     Args:
-        events_per_sec (int, optional): The target generation rate in events per second. 
+        events_per_sec (int, optional): The target generation rate in events per second.
             Defaults to EVENTS_PER_SEC.
     """
     max_customer_id = fetch_max_id("customer_id", "customers", FALLBACK_MAX_CUSTOMER_ID)

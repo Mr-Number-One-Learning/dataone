@@ -17,6 +17,7 @@ a compound (timestamp, primary key) cursor; not worth the complexity here.
 
 Run: python -m dataone.ingestion.cdc_simulator
 """
+
 from __future__ import annotations
 
 import json

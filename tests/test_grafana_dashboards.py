@@ -5,6 +5,7 @@ actually returns data), but JSON validity, datasource UID consistency with
 datasources.yml, table/metric name consistency with what was actually built,
 and panel grid non-overlap are all checkable offline.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,7 +13,14 @@ import re
 from pathlib import Path
 
 DASHBOARDS_DIR = Path(__file__).parent.parent / "infra" / "grafana" / "dashboards"
-DATASOURCES_PATH = Path(__file__).parent.parent / "infra" / "grafana" / "provisioning" / "datasources" / "datasources.yml"
+DATASOURCES_PATH = (
+    Path(__file__).parent.parent
+    / "infra"
+    / "grafana"
+    / "provisioning"
+    / "datasources"
+    / "datasources.yml"
+)
 
 EXPECTED_DATASOURCE_UIDS = {"dataone-clickhouse", "dataone-prometheus"}
 EXPECTED_CLICKHOUSE_TABLES = {
@@ -65,17 +73,13 @@ def test_dashboard_panels_dont_overlap():
         rects = _panel_rects(_load(name))
         for i in range(len(rects)):
             for j in range(i + 1, len(rects)):
-                assert not _rects_overlap(rects[i], rects[j]), (
-                    f"{name}: panels {i} and {j} overlap"
-                )
+                assert not _rects_overlap(rects[i], rects[j]), f"{name}: panels {i} and {j} overlap"
 
 
 def test_business_kpis_queries_every_clickhouse_mart_table():
     d = _load("business_kpis.json")
     all_sql = " ".join(
-        target.get("rawSql", "")
-        for panel in d["panels"]
-        for target in panel["targets"]
+        target.get("rawSql", "") for panel in d["panels"] for target in panel["targets"]
     )
     for table in EXPECTED_CLICKHOUSE_TABLES:
         assert re.search(rf"\bFROM {table}\b", all_sql), f"no panel queries {table}"
@@ -105,13 +109,11 @@ def test_data_quality_panels_use_the_clickhouse_datasource():
 def test_data_quality_queries_the_quarantine_summary_table():
     d = _load("data_quality.json")
     all_sql = " ".join(
-        target.get("rawSql", "")
-        for panel in d["panels"]
-        for target in panel["targets"]
+        target.get("rawSql", "") for panel in d["panels"] for target in panel["targets"]
     )
-    assert re.search(r"\bFROM quarantine_summary\b", all_sql), (
-        "no data_quality panel queries quarantine_summary"
-    )
+    assert re.search(
+        r"\bFROM quarantine_summary\b", all_sql
+    ), "no data_quality panel queries quarantine_summary"
 
 
 def test_panel_ids_are_unique_within_each_dashboard():

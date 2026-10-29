@@ -10,6 +10,7 @@ DataFrame semantics convincingly — written carefully against the real,
 documented API, but never executed here; first real run is wherever you
 actually have Spark available).
 """
+
 import pytest
 
 from dataone.quality.validators import reconcile_row_counts
@@ -65,11 +66,15 @@ def test_run_quality_gate_quarantines_without_dropping_anything(spark):
         [(1, "ok", 10.0), (2, None, 10.0), (3, "ok", -5.0), (4, "ok", 10.0)],
         ["id", "name", "unit_price"],
     )
-    result = run_quality_gate(df, required_columns=["name"], column_bounds={"unit_price": (0, None)})
+    result = run_quality_gate(
+        df, required_columns=["name"], column_bounds={"unit_price": (0, None)}
+    )
 
     assert result.passed_count == 2
     assert result.quarantined_count == 2
-    assert result.passed_count + result.quarantined_count == df.count(), "no row should ever be dropped"
+    assert (
+        result.passed_count + result.quarantined_count == df.count()
+    ), "no row should ever be dropped"
 
     reasons = {row.id: row._quarantine_reason for row in result.quarantined_df.collect()}
     assert reasons[2] == "null_check_failed"

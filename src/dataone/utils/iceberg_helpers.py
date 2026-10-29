@@ -11,6 +11,7 @@ needs, plus generating the DDL strings the jobs execute via spark.sql(...) —
 never a separate pyiceberg Catalog object. Property names below were checked
 against current Apache Iceberg docs, not recalled from memory alone.
 """
+
 from __future__ import annotations
 
 from dataone.config import iceberg, postgres
@@ -67,7 +68,7 @@ def table_identifier(layer: str, table_name: str) -> str:
 
     Returns:
         str: The fully-qualified table identifier.
-    
+
     Raises:
         ValueError: If the provided layer is not a valid predefined layer.
     """

@@ -2,6 +2,7 @@
 spark-submit command construction. The actual subprocess invocation in
 main() isn't tested here (no spark-submit available), but everything that
 can go wrong before the subprocess call is."""
+
 from __future__ import annotations
 
 import pytest

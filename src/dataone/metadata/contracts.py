@@ -2,10 +2,9 @@
 Data Contract enforcement module.
 Validates Spark DataFrame schemas against contract schemas defined in the metadata layer.
 """
+
 from __future__ import annotations
 
-from typing import Dict, Any
-from pyspark.sql import DataFrame
 from pyspark.sql.types import StructType
 
 from dataone.metadata.registry import get_registry
@@ -13,9 +12,12 @@ from dataone.utils.logging_config import get_logger
 
 log = get_logger(__name__)
 
+
 class DataContractViolation(RuntimeError):
     """Raised when an incoming dataset violates its defined data contract."""
+
     pass
+
 
 def validate_schema(df_schema: StructType, dataset_name: str) -> None:
     """Validates the schema of a DataFrame against the registered dataset contract.
@@ -39,7 +41,7 @@ def validate_schema(df_schema: StructType, dataset_name: str) -> None:
         return
 
     evolution_policy = contract.get("allowed_schema_evolution", "backward").lower()
-    
+
     contract_fields = {col["name"]: col for col in contract["columns"]}
     df_fields = {field.name: field for field in df_schema.fields}
 
@@ -48,18 +50,18 @@ def validate_schema(df_schema: StructType, dataset_name: str) -> None:
         if col_name in df_fields:
             df_type = df_fields[col_name].dataType.simpleString().upper()
             contract_type = contract_col["type"].upper()
-            
+
             # Normalize timestamp representation in PySpark simpleString
             if "TIMESTAMP" in df_type and "TIMESTAMP" in contract_type:
                 continue
-            
+
             # Normalize synonyms
             def normalize(t: str) -> str:
                 return t.replace("INTEGER", "INT").replace("LONG", "BIGINT")
-                
+
             df_norm = normalize(df_type)
             contract_norm = normalize(contract_type)
-            
+
             # Allow widening (INT -> BIGINT, FLOAT -> DOUBLE, DECIMAL -> DOUBLE)
             is_compatible = False
             if df_norm == contract_norm:
@@ -70,7 +72,7 @@ def validate_schema(df_schema: StructType, dataset_name: str) -> None:
                 is_compatible = True
             elif df_norm.startswith("DECIMAL") and contract_norm in ("DOUBLE", "FLOAT"):
                 is_compatible = True
-                
+
             if not is_compatible:
                 msg = f"Type mismatch for column '{col_name}' in dataset '{dataset_name}': expected {contract_type}, got {df_type}"
                 log.error("contracts.validate.type_mismatch", error=msg)
@@ -98,6 +100,10 @@ def validate_schema(df_schema: StructType, dataset_name: str) -> None:
                 log.error("contracts.validate.evolution_violation", error=msg)
                 raise DataContractViolation(msg)
             else:
-                log.info("contracts.validate.evolution_allowed", dataset=dataset_name, added_columns=added_cols)
+                log.info(
+                    "contracts.validate.evolution_allowed",
+                    dataset=dataset_name,
+                    added_columns=added_cols,
+                )
 
     log.info("contracts.validate.success", dataset=dataset_name)

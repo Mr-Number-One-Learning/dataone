@@ -4,6 +4,7 @@ batched so memory stays bounded even at multi-million-row volumes — this is
 what makes seeding GEN_ORDERS_TOTAL_ROWS=2000000 (the big-data bonus target)
 practical on a laptop.
 """
+
 from __future__ import annotations
 
 import csv
@@ -45,10 +46,14 @@ def bulk_copy(
     """
     # Compose identifiers with psycopg2.sql (same standard reset_sequence
     # already follows) so table/column names can never be treated as raw SQL.
-    copy_sql = sql.SQL("COPY {table} ({cols}) FROM STDIN WITH (FORMAT csv)").format(
-        table=sql.Identifier(*table.split(".")),
-        cols=sql.SQL(", ").join(sql.Identifier(c) for c in columns),
-    ).as_string(conn)
+    copy_sql = (
+        sql.SQL("COPY {table} ({cols}) FROM STDIN WITH (FORMAT csv)")
+        .format(
+            table=sql.Identifier(*table.split(".")),
+            cols=sql.SQL(", ").join(sql.Identifier(c) for c in columns),
+        )
+        .as_string(conn)
+    )
 
     cur = conn.cursor()
     total = 0

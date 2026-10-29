@@ -1,27 +1,33 @@
 """
 Unit tests for the Metadata Registry, Schema Contracts, and Lineage Tracker.
 """
+
 from __future__ import annotations
 
-import os
 import pytest
-from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
+from pyspark.sql.types import (
+    LongType,
+    StringType,
+    StructField,
+    StructType,
+    TimestampType,
+)
 
+from dataone.lineage.tracker import LineageTracker
+from dataone.metadata.contracts import DataContractViolation, validate_schema
 from dataone.metadata.registry import get_registry
-from dataone.metadata.contracts import validate_schema, DataContractViolation
-from dataone.lineage.tracker import LineageTracker, Dataset
 
 
 def test_metadata_registry_loads_contracts():
     """Tests that the metadata registry successfully reads contracts."""
     registry = get_registry()
-    
+
     # Assert that dim_customer exists and has valid contract data
     contract = registry.get_contract("gold.dim_customer")
     assert contract is not None
     assert contract["dataset"] == "gold.dim_customer"
     assert len(contract["columns"]) > 0
-    
+
     # Assert that get_spark_schema constructs a valid StructType
     schema = registry.get_spark_schema("gold.dim_customer")
     assert isinstance(schema, StructType)
@@ -30,19 +36,19 @@ def test_metadata_registry_loads_contracts():
 
 def test_validate_schema_matching():
     """Tests that validate_schema succeeds when schemas match exactly."""
-    registry = get_registry()
-    
     # Construct a matching schema for a simple table (e.g. silver.customers)
-    schema = StructType([
-        StructField("customer_id", LongType(), False),
-        StructField("full_name", StringType(), True),
-        StructField("email", StringType(), True),
-        StructField("segment", StringType(), True),
-        StructField("address", StringType(), True),
-        StructField("updated_at", TimestampType(), True),
-        StructField("captured_at", TimestampType(), True),
-    ])
-    
+    schema = StructType(
+        [
+            StructField("customer_id", LongType(), False),
+            StructField("full_name", StringType(), True),
+            StructField("email", StringType(), True),
+            StructField("segment", StringType(), True),
+            StructField("address", StringType(), True),
+            StructField("updated_at", TimestampType(), True),
+            StructField("captured_at", TimestampType(), True),
+        ]
+    )
+
     # Should not raise any exception
     validate_schema(schema, "silver.customers")
 
@@ -53,22 +59,24 @@ def test_validate_schema_evolution_disabled():
     registry = get_registry()
     contract = registry.get_contract("silver.customers")
     original_policy = contract.get("allowed_schema_evolution")
-    
+
     try:
         contract["allowed_schema_evolution"] = "none"
-        
+
         # Schema with an extra column
-        schema = StructType([
-            StructField("customer_id", LongType(), False),
-            StructField("full_name", StringType(), True),
-            StructField("email", StringType(), True),
-            StructField("segment", StringType(), True),
-            StructField("address", StringType(), True),
-            StructField("updated_at", TimestampType(), True),
-            StructField("captured_at", TimestampType(), True),
-            StructField("extra_column", StringType(), True)  # extra
-        ])
-        
+        schema = StructType(
+            [
+                StructField("customer_id", LongType(), False),
+                StructField("full_name", StringType(), True),
+                StructField("email", StringType(), True),
+                StructField("segment", StringType(), True),
+                StructField("address", StringType(), True),
+                StructField("updated_at", TimestampType(), True),
+                StructField("captured_at", TimestampType(), True),
+                StructField("extra_column", StringType(), True),  # extra
+            ]
+        )
+
         with pytest.raises(DataContractViolation) as exc:
             validate_schema(schema, "silver.customers")
         assert "Schema evolution is disabled" in str(exc.value)
@@ -78,12 +86,14 @@ def test_validate_schema_evolution_disabled():
 
 def test_validate_schema_missing_columns():
     """Tests that validate_schema raises DataContractViolation when required columns are missing."""
-    schema = StructType([
-        StructField("customer_id", LongType(), False),
-        StructField("full_name", StringType(), True),
-        # missing email
-    ])
-    
+    schema = StructType(
+        [
+            StructField("customer_id", LongType(), False),
+            StructField("full_name", StringType(), True),
+            # missing email
+        ]
+    )
+
     with pytest.raises(DataContractViolation) as exc:
         validate_schema(schema, "silver.customers")
     assert "missing required contract columns" in str(exc.value)
@@ -92,15 +102,17 @@ def test_validate_schema_missing_columns():
 def test_lineage_tracker_records_runs(monkeypatch):
     """Tests that LineageTracker logs inputs and outputs correctly and emits event."""
     emitted_events = []
-    
+
     # Mock Kafka send and DB logging
-    monkeypatch.setattr("dataone.ingestion.kafka_producers.send", lambda topic, val: emitted_events.append(val))
+    monkeypatch.setattr(
+        "dataone.ingestion.kafka_producers.send", lambda topic, val: emitted_events.append(val)
+    )
     monkeypatch.setattr("dataone.ingestion.kafka_producers.flush_producer", lambda: None)
-    
+
     with LineageTracker("test_job") as tracker:
         tracker.add_input("silver.orders")
         tracker.add_output("gold.daily_sales", records_written=100, records_failed=2)
-        
+
     assert len(tracker.inputs) == 1
     assert tracker.inputs[0].name == "silver.orders"
     assert len(tracker.outputs) == 1
@@ -108,7 +120,7 @@ def test_lineage_tracker_records_runs(monkeypatch):
     assert tracker.records_processed == 100
     assert tracker.records_quarantined == 2
     assert tracker.status == "success"
-    
+
     # Assert start and complete events are emitted
     assert len(emitted_events) == 2
     assert emitted_events[0]["eventType"] == "START"
@@ -116,12 +128,15 @@ def test_lineage_tracker_records_runs(monkeypatch):
     assert emitted_events[0]["job"]["name"] == "test_job"
 
 
-@pytest.mark.parametrize("dataset", [
-    "bronze.products",
-    "bronze.order_items",
-    "silver.products",
-    "silver.order_items",
-])
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        "bronze.products",
+        "bronze.order_items",
+        "silver.products",
+        "silver.order_items",
+    ],
+)
 def test_new_bronze_silver_contracts_are_loadable(dataset):
     """Verifies that all four new contracts introduced for the Postgres
     products/order_items Medallion migration are present, valid JSON, and

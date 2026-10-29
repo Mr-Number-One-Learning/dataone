@@ -1,4 +1,5 @@
 """Tests for the shared bronze/silver/gold/quarantine schema definitions."""
+
 from __future__ import annotations
 
 from dataone.utils import schemas
