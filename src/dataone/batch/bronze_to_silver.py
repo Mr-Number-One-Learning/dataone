@@ -23,6 +23,7 @@ import contextlib
 import glob
 import os
 import shutil
+import typing
 from datetime import date
 
 import psycopg2
@@ -55,7 +56,7 @@ from dataone.batch.gold_marts import (  # noqa: F401  (re-exported)
 )
 from dataone.batch.scd2_customer_dim import apply_scd2_merge
 from dataone.config import postgres
-from dataone.quality.validators import reconcile_row_counts, run_quality_gate
+from dataone.quality.validators import QualityResult, reconcile_row_counts, run_quality_gate
 from dataone.utils.iceberg_helpers import (
     bootstrap_namespaces_sql,
     table_identifier,
@@ -562,634 +563,490 @@ def write_append(df: DataFrame, layer: str, table_name: str) -> None:
     log.info("write_append.done", table=target)
 
 
+# ── Shared stage steps ────────────────────────────────────────────────────────
+# Each helper below is used by BOTH the per-stage entrypoints and the full
+# (monolithic) run, so the silver/gold logic exists exactly once.
+
+VALID_EVENT_TYPES = [
+    "page_view",
+    "add_to_cart",
+    "remove_from_cart",
+    "checkout_start",
+    "checkout_complete",
+]
+
+# Gold tables mirrored to ClickHouse. Order matters: it is the load order.
+GOLD_TABLE_NAMES = [
+    "daily_sales",
+    "top_products",
+    "customer_segments",
+    "conversion_rate",
+    "campaign_effectiveness",
+    "product_sentiment",
+    "dim_product",
+    "dim_campaign",
+    "customer_clv",
+    "funnel_conversion",
+    "roas",
+    "quarantine_summary",
+    "quality_gate_summary",
+    "fact_order_items",
+    "dim_date",
+]
+
+
+def _validate_schema(schema: StructType, dataset_name: str) -> None:
+    # Imported lazily, as before: pulls in the metadata registry only when a
+    # stage actually runs.
+    from dataone.metadata.contracts import validate_schema
+
+    validate_schema(schema, dataset_name)
+
+
+def _record_output(tracker, table: str, quality: QualityResult) -> None:
+    tracker.add_output(
+        table,
+        records_written=quality.passed_count,
+        records_failed=quality.quarantined_count,
+    )
+
+
+@contextlib.contextmanager
+def _stage_session(job_name: str) -> typing.Iterator[SparkSession]:
+    """Spark session for one job: bootstraps the lakehouse, logs and re-raises
+    any failure, and always stops the session."""
+    spark: SparkSession | None = None
+    try:
+        spark = build_spark_session(job_name)
+        bootstrap_lakehouse(spark)
+        yield spark
+    except Exception as exc:
+        log.error(f"{job_name}.failed", error=str(exc), exc_info=True)
+        raise
+    finally:
+        if spark is not None:
+            spark.stop()
+
+
+def _read_silver(spark: SparkSession, table: str) -> DataFrame:
+    return spark.read.format("iceberg").load(table_identifier("silver", table))
+
+
+def standardize_campaigns(bronze: dict[str, DataFrame], tracker) -> QualityResult:
+    quality = run_quality_gate(bronze["campaigns"], dataset_name="bronze.campaigns")
+    _validate_schema(quality.passed_df.schema, "silver.campaigns")
+    write_overwrite_partitions(quality.passed_df, "silver", "campaigns")
+    write_append(quality.quarantined_df, "quarantine", "campaigns")
+    _record_output(tracker, "silver.campaigns", quality)
+    return quality
+
+
+def standardize_customers(spark: SparkSession, cdc_df: DataFrame, tracker) -> QualityResult:
+    customers_df = parse_customers_from_cdc(cdc_df)
+    _validate_schema(customers_df.schema, "silver.customers")
+    quality = run_quality_gate(customers_df, dataset_name="silver.customers")
+    passed = quality.passed_df.cache()
+    write_append(quality.quarantined_df, "quarantine", "customers")
+    merge_into_silver(spark, passed, "customers", "customer_id")
+    _record_output(tracker, "silver.customers", quality)
+    passed.unpersist()
+    return quality
+
+
+def standardize_orders(spark: SparkSession, cdc_df: DataFrame, tracker) -> QualityResult:
+    orders_df = parse_orders_from_cdc(cdc_df)
+    _validate_schema(orders_df.schema, "silver.orders")
+    quality = run_quality_gate(orders_df, dataset_name="silver.orders")
+    passed = quality.passed_df.cache()
+    write_append(quality.quarantined_df, "quarantine", "orders")
+    merge_into_silver(spark, passed, "orders", "order_id")
+    _record_output(tracker, "silver.orders", quality)
+    passed.unpersist()
+    return quality
+
+
+def standardize_reviews(bronze_reviews_df: DataFrame, tracker) -> tuple[QualityResult, DataFrame]:
+    """Returns (quality, cached passed DataFrame). The caller unpersists it."""
+    quality = run_quality_gate(
+        build_silver_reviews(bronze_reviews_df), dataset_name="silver.reviews"
+    )
+    passed = quality.passed_df.cache()
+    _validate_schema(passed.schema, "silver.reviews")
+    write_overwrite_partitions(passed, "silver", "reviews")
+    write_append(quality.quarantined_df, "quarantine", "reviews")
+    _record_output(tracker, "silver.reviews", quality)
+    return quality, passed
+
+
+def standardize_clickstream(
+    bronze_clickstream_df: DataFrame, tracker
+) -> tuple[QualityResult, DataFrame]:
+    """Returns (quality, cached passed DataFrame). The caller unpersists it."""
+    quality = run_quality_gate(bronze_clickstream_df, dataset_name="quarantine.clickstream")
+    is_valid_event = F.col("event_type").isin(VALID_EVENT_TYPES)
+
+    passed = quality.passed_df.filter(is_valid_event).cache()
+    invalid_event_quarantine = quality.passed_df.filter(~is_valid_event).withColumn(
+        "_quarantine_reason", F.lit("invalid_event_type")
+    )
+    final_quarantine = quality.quarantined_df.unionByName(invalid_event_quarantine)
+
+    _validate_schema(passed.schema, "silver.clickstream")
+    write_overwrite_partitions(passed, "silver", "clickstream")
+    write_append(final_quarantine, "quarantine", "clickstream")
+    tracker.add_output(
+        "silver.clickstream",
+        records_written=passed.count(),
+        records_failed=final_quarantine.count(),
+    )
+    return quality, passed
+
+
+def standardize_products(spark: SparkSession, tracker) -> QualityResult:
+    """Products -> silver.products (SCD Type 1 upsert)."""
+    bronze_df = spark.read.format("iceberg").load(table_identifier("bronze", "products"))
+    quality = run_quality_gate(build_silver_products(bronze_df), dataset_name="quarantine.products")
+    merge_into_silver(spark, quality.passed_df, "products", "product_id")
+    write_append(quality.quarantined_df, "quarantine", "products")
+    _record_output(tracker, "silver.products", quality)
+    return quality
+
+
+def standardize_order_items(spark: SparkSession, tracker) -> QualityResult:
+    """Order items -> silver.order_items (insert-only merge)."""
+    bronze_df = spark.read.format("iceberg").load(table_identifier("bronze", "order_items"))
+    quality = run_quality_gate(
+        build_silver_order_items(bronze_df), dataset_name="quarantine.order_items"
+    )
+    merge_into_silver(spark, quality.passed_df, "order_items", "order_item_id")
+    write_append(quality.quarantined_df, "quarantine", "order_items")
+    _record_output(tracker, "silver.order_items", quality)
+    return quality
+
+
+def build_and_write_fact_order_items(
+    orders_silver_df: DataFrame,
+    order_items_df: DataFrame,
+    products_df: DataFrame,
+    customer_dim_full_df: DataFrame,
+    tracker,
+) -> tuple[DataFrame, QualityResult]:
+    """Builds gold.fact_order_items, runs its quality gate and writes it.
+
+    Returns (cached fact DataFrame, quality result). The caller unpersists the
+    DataFrame."""
+    fact_order_items_df = (
+        build_fact_order_items(orders_silver_df, order_items_df, products_df, customer_dim_full_df)
+        .withColumn(
+            "sk_order_id",
+            F.md5(
+                F.concat_ws(
+                    "||",
+                    F.lit("postgres"),
+                    F.col("order_id").cast("string"),
+                    F.col("product_id").cast("string"),
+                )
+            ),
+        )
+        .cache()
+    )
+
+    quality_result = run_quality_gate(fact_order_items_df, dataset_name="gold.fact_order_items")
+    reconcile_row_counts(
+        source_count=fact_order_items_df.count(),
+        landed_count=quality_result.passed_count + quality_result.quarantined_count,
+    )
+    _validate_schema(quality_result.passed_df.schema, "gold.fact_order_items")
+    write_overwrite_partitions(
+        quality_result.passed_df.sort("order_date", "customer_id"),
+        "gold",
+        "fact_order_items",
+    )
+    write_append(quality_result.quarantined_df, "quarantine", "fact_order_items")
+    _record_output(tracker, "gold.fact_order_items", quality_result)
+    return fact_order_items_df, quality_result
+
+
+def build_and_write_gold_marts(
+    spark: SparkSession,
+    tracker,
+    fact_quality: QualityResult,
+    products_df: DataFrame,
+    customer_dim_full_df: DataFrame,
+    customer_dim_current_df: DataFrame,
+    clickstream_df: DataFrame,
+    reviews_df: DataFrame,
+    campaigns_df: DataFrame,
+    quality_results_by_table: dict[str, QualityResult | None],
+) -> None:
+    """Builds every gold mart other than fact_order_items and writes it to Iceberg."""
+    build_dim_date(spark).writeTo(table_identifier("gold", "dim_date")).createOrReplace()
+    tracker.add_output("gold.dim_date", records_written=1096)
+
+    fact_df = fact_quality.passed_df
+    gold = {
+        "daily_sales": build_daily_sales(fact_df),
+        "top_products": build_top_products(fact_df, products_df),
+        "customer_segments": build_customer_segments(fact_df, customer_dim_full_df),
+        "conversion_rate": build_conversion_rate(clickstream_df),
+        "campaign_effectiveness": build_campaign_effectiveness(campaigns_df),
+        "product_sentiment": build_product_sentiment(reviews_df, products_df),
+        "dim_product": build_dim_product(products_df),
+        "dim_campaign": build_dim_campaign(campaigns_df),
+        "customer_clv": build_customer_clv(fact_df, customer_dim_current_df),
+        "funnel_conversion": build_funnel_conversion(clickstream_df),
+        "roas": build_roas(fact_df, campaigns_df),
+        "quarantine_summary": build_quarantine_summary(spark),
+        "quality_gate_summary": build_quality_gate_summary(
+            spark, date.today(), quality_results_by_table
+        ),
+    }
+    for name, df in gold.items():
+        _validate_schema(df.schema, f"gold.{name}")
+        write_overwrite_partitions(df, "gold", name)
+        tracker.add_output(f"gold.{name}", records_written=df.count())
+
+
+def sync_gold_to_clickhouse(spark: SparkSession) -> None:
+    gold_from_iceberg = {
+        name: spark.read.format("iceberg").load(table_identifier("gold", name))
+        for name in GOLD_TABLE_NAMES
+    }
+    load_clickhouse_marts(gold_from_iceberg)
+
+
+# ── Stage entrypoints ─────────────────────────────────────────────────────────
+
+
+def run_ingest_bronze(args: argparse.Namespace) -> None:
+    from dataone.lineage.tracker import LineageTracker
+
+    job = "bronze_to_silver.ingest_bronze"
+    with LineageTracker(job, args.start, args.end) as tracker:
+        tracker.add_input("mongodb.reviews")
+        tracker.add_input("nifi.campaigns")
+        tracker.add_input("postgres.products")
+        tracker.add_input("postgres.order_items")
+        with _stage_session(job) as spark:
+            campaigns_files = ingest_campaigns_to_bronze(spark)
+            reviews_count = ingest_reviews_to_bronze(spark)
+            products_count = ingest_products_to_bronze(spark)
+            order_items_count = ingest_order_items_to_bronze(spark)
+            tracker.add_output("bronze.campaigns", records_written=campaigns_files)
+            tracker.add_output("bronze.reviews", records_written=reviews_count)
+            tracker.add_output("bronze.products", records_written=products_count)
+            tracker.add_output("bronze.order_items", records_written=order_items_count)
+            log.info(f"{job}.done")
+
+
+def run_standardize_silver(args: argparse.Namespace) -> None:
+    from dataone.lineage.tracker import LineageTracker
+
+    job = "bronze_to_silver.standardize_silver"
+    with LineageTracker(job, args.start, args.end) as tracker:
+        for name in (
+            "orders_cdc",
+            "clickstream",
+            "campaigns",
+            "reviews",
+            "products",
+            "order_items",
+        ):
+            tracker.add_input(f"bronze.{name}")
+        with _stage_session(job) as spark:
+            bronze = read_bronze_tables(spark, args.start, args.end)
+
+            standardize_campaigns(bronze, tracker)
+            standardize_customers(spark, bronze["cdc"], tracker)
+            standardize_orders(spark, bronze["cdc"], tracker)
+            _, reviews_passed = standardize_reviews(bronze["reviews"], tracker)
+            reviews_passed.unpersist()
+            _, clickstream_passed = standardize_clickstream(bronze["clickstream"], tracker)
+            clickstream_passed.unpersist()
+            standardize_products(spark, tracker)
+            standardize_order_items(spark, tracker)
+            log.info(f"{job}.done")
+
+
+def run_model_gold(args: argparse.Namespace) -> None:
+    from dataone.lineage.tracker import LineageTracker
+
+    job = "bronze_to_silver.model_gold"
+    with LineageTracker(job, args.start, args.end) as tracker:
+        for name in (
+            "customers",
+            "orders",
+            "reviews",
+            "clickstream",
+            "order_items",
+            "products",
+            "campaigns",
+        ):
+            tracker.add_input(f"silver.{name}")
+        with _stage_session(job) as spark:
+            customers_silver_df = _read_silver(spark, "customers")
+            orders_silver_df = _read_silver(spark, "orders")
+            reviews_df = _read_silver(spark, "reviews")
+            clickstream_df = _read_silver(spark, "clickstream")
+            campaigns_df = _latest_per_key(
+                _read_silver(spark, "campaigns"),
+                key_col="campaign_id",
+                order_col="ingested_at",
+            )
+
+            apply_scd2_merge(spark, customers_silver_df)
+            customer_dim_full_df = spark.read.format("iceberg").load(
+                table_identifier("gold", "dim_customer")
+            )
+            customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
+
+            # Read from Silver — no direct Postgres connection
+            order_items_df = _read_silver(spark, "order_items")
+            products_df = _read_silver(spark, "products")
+
+            fact_order_items_df, fact_quality = build_and_write_fact_order_items(
+                orders_silver_df, order_items_df, products_df, customer_dim_full_df, tracker
+            )
+
+            # The standalone gold stage has no in-memory quality results for the
+            # silver tables; build_quality_gate_summary falls back to counting
+            # the Iceberg tables for those.
+            quality_results_by_table: dict[str, QualityResult | None] = {
+                "campaigns": None,
+                "customers": None,
+                "orders": None,
+                "products": None,
+                "fact_order_items": fact_quality,
+                "reviews": None,
+                "clickstream": None,
+            }
+            build_and_write_gold_marts(
+                spark,
+                tracker,
+                fact_quality,
+                products_df,
+                customer_dim_full_df,
+                customer_dim_current_df,
+                clickstream_df,
+                reviews_df,
+                campaigns_df,
+                quality_results_by_table,
+            )
+
+            fact_order_items_df.unpersist()
+            log.info(f"{job}.done")
+
+
+def run_sync_clickhouse(args: argparse.Namespace) -> None:
+    from dataone.lineage.tracker import LineageTracker
+
+    job = "bronze_to_silver.sync_clickhouse"
+    with LineageTracker(job, args.start, args.end) as tracker:
+        for name in GOLD_TABLE_NAMES:
+            tracker.add_input(f"gold.{name}")
+        with _stage_session(job) as spark:
+            sync_gold_to_clickhouse(spark)
+            log.info(f"{job}.done")
+
+
+def run_full_pipeline(args: argparse.Namespace) -> None:
+    """All stages in one Spark session and one lineage run (no --stage given)."""
+    from dataone.lineage.tracker import LineageTracker
+
+    job = "bronze_to_silver"
+    with LineageTracker(job, args.start, args.end) as tracker:
+        tracker.add_input("bronze.orders_cdc")
+        tracker.add_input("bronze.clickstream")
+        tracker.add_input("bronze.campaigns")
+        tracker.add_input("bronze.reviews")
+        tracker.add_input("postgres.products")  # ingested to bronze.products
+        tracker.add_input("postgres.order_items")  # ingested to bronze.order_items
+        tracker.add_input("mongodb.reviews")
+        tracker.add_input("nifi.campaigns")
+
+        with _stage_session(job) as spark:
+            ingest_campaigns_to_bronze(spark)
+            ingest_reviews_to_bronze(spark)
+            ingest_products_to_bronze(spark)
+            ingest_order_items_to_bronze(spark)
+
+            bronze = read_bronze_tables(spark, args.start, args.end)
+
+            campaigns_quality = standardize_campaigns(bronze, tracker)
+            campaigns_df = campaigns_quality.passed_df
+            customers_quality = standardize_customers(spark, bronze["cdc"], tracker)
+            orders_quality = standardize_orders(spark, bronze["cdc"], tracker)
+
+            apply_scd2_merge(spark, _read_silver(spark, "customers"))
+            orders_silver_df = _read_silver(spark, "orders")
+            customer_dim_full_df = spark.read.format("iceberg").load(
+                table_identifier("gold", "dim_customer")
+            )
+            customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
+
+            products_quality = standardize_products(spark, tracker)
+            standardize_order_items(spark, tracker)
+
+            # Read from Silver — no direct Postgres connection in Gold
+            order_items_df = _read_silver(spark, "order_items")
+            products_df = _read_silver(spark, "products")
+
+            fact_order_items_df, fact_quality = build_and_write_fact_order_items(
+                orders_silver_df, order_items_df, products_df, customer_dim_full_df, tracker
+            )
+
+            reviews_quality, reviews_passed = standardize_reviews(bronze["reviews"], tracker)
+            clickstream_quality, clickstream_passed = standardize_clickstream(
+                bronze["clickstream"], tracker
+            )
+
+            quality_results_by_table: dict[str, QualityResult | None] = {
+                "campaigns": campaigns_quality,
+                "customers": customers_quality,
+                "orders": orders_quality,
+                "products": products_quality,
+                "fact_order_items": fact_quality,
+                "reviews": reviews_quality,
+                "clickstream": clickstream_quality,
+            }
+            build_and_write_gold_marts(
+                spark,
+                tracker,
+                fact_quality,
+                products_df,
+                customer_dim_full_df,
+                customer_dim_current_df,
+                clickstream_passed,
+                reviews_passed,
+                campaigns_df,
+                quality_results_by_table,
+            )
+
+            sync_gold_to_clickhouse(spark)
+
+            fact_order_items_df.unpersist()
+            reviews_passed.unpersist()
+            clickstream_passed.unpersist()
+            log.info(f"{job}.done")
+
+
+_STAGES = {
+    "ingest_bronze": run_ingest_bronze,
+    "standardize_silver": run_standardize_silver,
+    "model_gold": run_model_gold,
+    "sync_clickhouse": run_sync_clickhouse,
+}
+
+
 def main() -> None:
     """Main entrypoint for the bronze-to-silver batch pipeline.
 
-    Coordinates the ingestion of campaigns and reviews to bronze, applies
-    data quality gates, merges data into the silver layer, and aggregates
-    business metrics into the gold layer before loading them into ClickHouse.
+    With --stage, runs just that stage (this is how the Prefect flow calls it);
+    without, runs ingest -> silver -> gold -> ClickHouse in one Spark session.
     """
     args = parse_args()
-    stage = args.stage
-    log.info("bronze_to_silver.start", start=args.start, end=args.end, stage=stage)
-
-    from dataone.lineage.tracker import LineageTracker
-    from dataone.metadata.contracts import validate_schema
-
-    spark: SparkSession | None = None
-
-    if stage == "ingest_bronze":
-        with LineageTracker("bronze_to_silver.ingest_bronze", args.start, args.end) as tracker:
-            tracker.add_input("mongodb.reviews")
-            tracker.add_input("nifi.campaigns")
-            tracker.add_input("postgres.products")
-            tracker.add_input("postgres.order_items")
-            try:
-                spark = build_spark_session("bronze_to_silver.ingest_bronze")
-                bootstrap_lakehouse(spark)
-                campaigns_files = ingest_campaigns_to_bronze(spark)
-                reviews_count = ingest_reviews_to_bronze(spark)
-                products_count = ingest_products_to_bronze(spark)
-                order_items_count = ingest_order_items_to_bronze(spark)
-                tracker.add_output("bronze.campaigns", records_written=campaigns_files)
-                tracker.add_output("bronze.reviews", records_written=reviews_count)
-                tracker.add_output("bronze.products", records_written=products_count)
-                tracker.add_output("bronze.order_items", records_written=order_items_count)
-                log.info("bronze_to_silver.ingest_bronze.done")
-            except Exception as exc:
-                log.error("bronze_to_silver.ingest_bronze.failed", error=str(exc), exc_info=True)
-                raise
-            finally:
-                if spark is not None:
-                    spark.stop()
-
-    elif stage == "standardize_silver":
-        with LineageTracker("bronze_to_silver.standardize_silver", args.start, args.end) as tracker:
-            tracker.add_input("bronze.orders_cdc")
-            tracker.add_input("bronze.clickstream")
-            tracker.add_input("bronze.campaigns")
-            tracker.add_input("bronze.reviews")
-            tracker.add_input("bronze.products")
-            tracker.add_input("bronze.order_items")
-            try:
-                spark = build_spark_session("bronze_to_silver.standardize_silver")
-                bootstrap_lakehouse(spark)
-                bronze = read_bronze_tables(spark, args.start, args.end)
-
-                campaigns_quality = run_quality_gate(
-                    bronze["campaigns"], dataset_name="bronze.campaigns"
-                )
-                campaigns_passed = campaigns_quality.passed_df
-                validate_schema(campaigns_passed.schema, "silver.campaigns")
-                write_overwrite_partitions(campaigns_passed, "silver", "campaigns")
-                write_append(campaigns_quality.quarantined_df, "quarantine", "campaigns")
-                tracker.add_output(
-                    "silver.campaigns",
-                    records_written=campaigns_quality.passed_count,
-                    records_failed=campaigns_quality.quarantined_count,
-                )
-
-                customers_df = parse_customers_from_cdc(bronze["cdc"])
-                orders_df = parse_orders_from_cdc(bronze["cdc"])
-
-                validate_schema(customers_df.schema, "silver.customers")
-                customers_quality = run_quality_gate(customers_df, dataset_name="silver.customers")
-                customers_passed = customers_quality.passed_df.cache()
-                write_append(customers_quality.quarantined_df, "quarantine", "customers")
-                merge_into_silver(spark, customers_passed, "customers", "customer_id")
-                tracker.add_output(
-                    "silver.customers",
-                    records_written=customers_quality.passed_count,
-                    records_failed=customers_quality.quarantined_count,
-                )
-                customers_passed.unpersist()
-
-                validate_schema(orders_df.schema, "silver.orders")
-                orders_quality = run_quality_gate(orders_df, dataset_name="silver.orders")
-                orders_passed = orders_quality.passed_df.cache()
-                write_append(orders_quality.quarantined_df, "quarantine", "orders")
-                merge_into_silver(spark, orders_passed, "orders", "order_id")
-                tracker.add_output(
-                    "silver.orders",
-                    records_written=orders_quality.passed_count,
-                    records_failed=orders_quality.quarantined_count,
-                )
-                orders_passed.unpersist()
-
-                silver_reviews_df = build_silver_reviews(bronze["reviews"])
-                reviews_quality = run_quality_gate(silver_reviews_df, dataset_name="silver.reviews")
-                silver_reviews_passed = reviews_quality.passed_df.cache()
-                validate_schema(silver_reviews_passed.schema, "silver.reviews")
-                write_overwrite_partitions(silver_reviews_passed, "silver", "reviews")
-                write_append(reviews_quality.quarantined_df, "quarantine", "reviews")
-                tracker.add_output(
-                    "silver.reviews",
-                    records_written=reviews_quality.passed_count,
-                    records_failed=reviews_quality.quarantined_count,
-                )
-                silver_reviews_passed.unpersist()
-
-                clickstream_quality = run_quality_gate(
-                    bronze["clickstream"], dataset_name="quarantine.clickstream"
-                )
-                EVENT_TYPES = [
-                    "page_view",
-                    "add_to_cart",
-                    "remove_from_cart",
-                    "checkout_start",
-                    "checkout_complete",
-                ]
-                is_valid_event = F.col("event_type").isin(EVENT_TYPES)
-
-                silver_clickstream_passed = clickstream_quality.passed_df.filter(
-                    is_valid_event
-                ).cache()
-
-                invalid_event_quarantine = clickstream_quality.passed_df.filter(
-                    ~is_valid_event
-                ).withColumn("_quarantine_reason", F.lit("invalid_event_type"))
-                final_clickstream_quarantine = clickstream_quality.quarantined_df.unionByName(
-                    invalid_event_quarantine
-                )
-
-                validate_schema(silver_clickstream_passed.schema, "silver.clickstream")
-                write_overwrite_partitions(silver_clickstream_passed, "silver", "clickstream")
-                write_append(final_clickstream_quarantine, "quarantine", "clickstream")
-                tracker.add_output(
-                    "silver.clickstream",
-                    records_written=silver_clickstream_passed.count(),
-                    records_failed=final_clickstream_quarantine.count(),
-                )
-                silver_clickstream_passed.unpersist()
-
-                # --- Products → silver.products (SCD Type 1 upsert) ---
-                bronze_products_df = spark.read.format("iceberg").load(
-                    table_identifier("bronze", "products")
-                )
-                products_silver_df = build_silver_products(bronze_products_df)
-                products_quality = run_quality_gate(
-                    products_silver_df, dataset_name="quarantine.products"
-                )
-                merge_into_silver(spark, products_quality.passed_df, "products", "product_id")
-                write_append(products_quality.quarantined_df, "quarantine", "products")
-                tracker.add_output(
-                    "silver.products",
-                    records_written=products_quality.passed_count,
-                    records_failed=products_quality.quarantined_count,
-                )
-
-                # --- Order Items → silver.order_items (insert-only merge) ---
-                bronze_order_items_df = spark.read.format("iceberg").load(
-                    table_identifier("bronze", "order_items")
-                )
-                order_items_silver_df = build_silver_order_items(bronze_order_items_df)
-                order_items_quality = run_quality_gate(
-                    order_items_silver_df, dataset_name="quarantine.order_items"
-                )
-                merge_into_silver(
-                    spark, order_items_quality.passed_df, "order_items", "order_item_id"
-                )
-                write_append(order_items_quality.quarantined_df, "quarantine", "order_items")
-                tracker.add_output(
-                    "silver.order_items",
-                    records_written=order_items_quality.passed_count,
-                    records_failed=order_items_quality.quarantined_count,
-                )
-
-                log.info("bronze_to_silver.standardize_silver.done")
-            except Exception as exc:
-                log.error(
-                    "bronze_to_silver.standardize_silver.failed", error=str(exc), exc_info=True
-                )
-                raise
-            finally:
-                if spark is not None:
-                    spark.stop()
-
-    elif stage == "model_gold":
-        with LineageTracker("bronze_to_silver.model_gold", args.start, args.end) as tracker:
-            tracker.add_input("silver.customers")
-            tracker.add_input("silver.orders")
-            tracker.add_input("silver.reviews")
-            tracker.add_input("silver.clickstream")
-            tracker.add_input("silver.order_items")
-            tracker.add_input("silver.products")
-            tracker.add_input("silver.campaigns")
-            try:
-                spark = build_spark_session("bronze_to_silver.model_gold")
-                bootstrap_lakehouse(spark)
-
-                customers_silver_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "customers")
-                )
-                orders_silver_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "orders")
-                )
-                silver_reviews_passed = spark.read.format("iceberg").load(
-                    table_identifier("silver", "reviews")
-                )
-                silver_clickstream_passed = spark.read.format("iceberg").load(
-                    table_identifier("silver", "clickstream")
-                )
-
-                bronze_campaigns = _latest_per_key(
-                    spark.read.format("iceberg").load(table_identifier("silver", "campaigns")),
-                    key_col="campaign_id",
-                    order_col="ingested_at",
-                )
-
-                apply_scd2_merge(spark, customers_silver_df)
-                customer_dim_full_df = spark.read.format("iceberg").load(
-                    table_identifier("gold", "dim_customer")
-                )
-                customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
-
-                # Read from Silver — no direct Postgres connection
-                order_items_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "order_items")
-                )
-                products_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "products")
-                )
-
-                fact_order_items_df = (
-                    build_fact_order_items(
-                        orders_silver_df, order_items_df, products_df, customer_dim_full_df
-                    )
-                    .withColumn(
-                        "sk_order_id",
-                        F.md5(
-                            F.concat_ws(
-                                "||",
-                                F.lit("postgres"),
-                                F.col("order_id").cast("string"),
-                                F.col("product_id").cast("string"),
-                            )
-                        ),
-                    )
-                    .cache()
-                )
-
-                quality_result = run_quality_gate(
-                    fact_order_items_df, dataset_name="gold.fact_order_items"
-                )
-                reconcile_row_counts(
-                    source_count=fact_order_items_df.count(),
-                    landed_count=quality_result.passed_count + quality_result.quarantined_count,
-                )
-                validate_schema(quality_result.passed_df.schema, "gold.fact_order_items")
-                write_overwrite_partitions(
-                    quality_result.passed_df.sort("order_date", "customer_id"),
-                    "gold",
-                    "fact_order_items",
-                )
-                write_append(quality_result.quarantined_df, "quarantine", "fact_order_items")
-                tracker.add_output(
-                    "gold.fact_order_items",
-                    records_written=quality_result.passed_count,
-                    records_failed=quality_result.quarantined_count,
-                )
-
-                quality_results_by_table = {
-                    "campaigns": None,
-                    "customers": None,
-                    "orders": None,
-                    "products": None,
-                    "fact_order_items": quality_result,
-                    "reviews": None,
-                    "clickstream": None,
-                }
-
-                build_dim_date(spark).writeTo(
-                    table_identifier("gold", "dim_date")
-                ).createOrReplace()
-                tracker.add_output("gold.dim_date", records_written=1096)
-
-                gold = {
-                    "daily_sales": build_daily_sales(quality_result.passed_df),
-                    "top_products": build_top_products(quality_result.passed_df, products_df),
-                    "customer_segments": build_customer_segments(
-                        quality_result.passed_df, customer_dim_full_df
-                    ),
-                    "conversion_rate": build_conversion_rate(silver_clickstream_passed),
-                    "campaign_effectiveness": build_campaign_effectiveness(bronze_campaigns),
-                    "product_sentiment": build_product_sentiment(
-                        silver_reviews_passed, products_df
-                    ),
-                    "dim_product": build_dim_product(products_df),
-                    "dim_campaign": build_dim_campaign(bronze_campaigns),
-                    "customer_clv": build_customer_clv(
-                        quality_result.passed_df, customer_dim_current_df
-                    ),
-                    "funnel_conversion": build_funnel_conversion(silver_clickstream_passed),
-                    "roas": build_roas(quality_result.passed_df, bronze_campaigns),
-                    "quarantine_summary": build_quarantine_summary(spark),
-                    "quality_gate_summary": build_quality_gate_summary(
-                        spark, date.today(), quality_results_by_table
-                    ),
-                }
-                for name, df in gold.items():
-                    validate_schema(df.schema, f"gold.{name}")
-                    write_overwrite_partitions(df, "gold", name)
-                    tracker.add_output(f"gold.{name}", records_written=df.count())
-
-                fact_order_items_df.unpersist()
-                log.info("bronze_to_silver.model_gold.done")
-            except Exception as exc:
-                log.error("bronze_to_silver.model_gold.failed", error=str(exc), exc_info=True)
-                raise
-            finally:
-                if spark is not None:
-                    spark.stop()
-
-    elif stage == "sync_clickhouse":
-        with LineageTracker("bronze_to_silver.sync_clickhouse", args.start, args.end) as tracker:
-            gold_table_names = [
-                "daily_sales",
-                "top_products",
-                "customer_segments",
-                "conversion_rate",
-                "campaign_effectiveness",
-                "product_sentiment",
-                "dim_product",
-                "dim_campaign",
-                "customer_clv",
-                "funnel_conversion",
-                "roas",
-                "quarantine_summary",
-                "quality_gate_summary",
-                "fact_order_items",
-                "dim_date",
-            ]
-            for name in gold_table_names:
-                tracker.add_input(f"gold.{name}")
-            try:
-                spark = build_spark_session("bronze_to_silver.sync_clickhouse")
-                bootstrap_lakehouse(spark)
-
-                gold_from_iceberg = {
-                    name: spark.read.format("iceberg").load(table_identifier("gold", name))
-                    for name in gold_table_names
-                    if name not in ["fact_order_items", "dim_date"]
-                }
-                gold_from_iceberg["fact_order_items"] = spark.read.format("iceberg").load(
-                    table_identifier("gold", "fact_order_items")
-                )
-                gold_from_iceberg["dim_date"] = spark.read.format("iceberg").load(
-                    table_identifier("gold", "dim_date")
-                )
-
-                load_clickhouse_marts(gold_from_iceberg)
-                log.info("bronze_to_silver.sync_clickhouse.done")
-            except Exception as exc:
-                log.error("bronze_to_silver.sync_clickhouse.failed", error=str(exc), exc_info=True)
-                raise
-            finally:
-                if spark is not None:
-                    spark.stop()
-
-    else:
-        with LineageTracker("bronze_to_silver", args.start, args.end) as tracker:
-            tracker.add_input("bronze.orders_cdc")
-            tracker.add_input("bronze.clickstream")
-            tracker.add_input("bronze.campaigns")
-            tracker.add_input("bronze.reviews")
-            tracker.add_input("postgres.products")  # ingested to bronze.products
-            tracker.add_input("postgres.order_items")  # ingested to bronze.order_items
-            tracker.add_input("mongodb.reviews")
-            tracker.add_input("nifi.campaigns")
-
-            try:
-                spark = build_spark_session("bronze_to_silver")
-                bootstrap_lakehouse(spark)
-                ingest_campaigns_to_bronze(spark)
-                ingest_reviews_to_bronze(spark)
-                ingest_products_to_bronze(spark)
-                ingest_order_items_to_bronze(spark)
-
-                bronze = read_bronze_tables(spark, args.start, args.end)
-
-                campaigns_quality = run_quality_gate(
-                    bronze["campaigns"], dataset_name="bronze.campaigns"
-                )
-                campaigns_passed = campaigns_quality.passed_df
-                validate_schema(campaigns_passed.schema, "silver.campaigns")
-                write_overwrite_partitions(campaigns_passed, "silver", "campaigns")
-                write_append(campaigns_quality.quarantined_df, "quarantine", "campaigns")
-                tracker.add_output(
-                    "silver.campaigns",
-                    records_written=campaigns_quality.passed_count,
-                    records_failed=campaigns_quality.quarantined_count,
-                )
-                bronze["campaigns"] = campaigns_passed
-
-                customers_df = parse_customers_from_cdc(bronze["cdc"])
-                orders_df = parse_orders_from_cdc(bronze["cdc"])
-
-                validate_schema(customers_df.schema, "silver.customers")
-                customers_quality = run_quality_gate(customers_df, dataset_name="silver.customers")
-                customers_passed = customers_quality.passed_df.cache()
-                write_append(customers_quality.quarantined_df, "quarantine", "customers")
-                merge_into_silver(spark, customers_passed, "customers", "customer_id")
-                tracker.add_output(
-                    "silver.customers",
-                    records_written=customers_quality.passed_count,
-                    records_failed=customers_quality.quarantined_count,
-                )
-
-                validate_schema(orders_df.schema, "silver.orders")
-                orders_quality = run_quality_gate(orders_df, dataset_name="silver.orders")
-                orders_passed = orders_quality.passed_df.cache()
-                write_append(orders_quality.quarantined_df, "quarantine", "orders")
-                merge_into_silver(spark, orders_passed, "orders", "order_id")
-                tracker.add_output(
-                    "silver.orders",
-                    records_written=orders_quality.passed_count,
-                    records_failed=orders_quality.quarantined_count,
-                )
-
-                customers_silver_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "customers")
-                )
-                orders_silver_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "orders")
-                )
-
-                apply_scd2_merge(spark, customers_silver_df)
-                customer_dim_full_df = spark.read.format("iceberg").load(
-                    table_identifier("gold", "dim_customer")
-                )
-                customer_dim_current_df = customer_dim_full_df.filter(F.col("is_current"))
-
-                # --- Products → silver.products (SCD Type 1 upsert) ---
-                bronze_products_df = spark.read.format("iceberg").load(
-                    table_identifier("bronze", "products")
-                )
-                products_silver_df = build_silver_products(bronze_products_df)
-                products_quality = run_quality_gate(
-                    products_silver_df, dataset_name="quarantine.products"
-                )
-                merge_into_silver(spark, products_quality.passed_df, "products", "product_id")
-                write_append(products_quality.quarantined_df, "quarantine", "products")
-                tracker.add_output(
-                    "silver.products",
-                    records_written=products_quality.passed_count,
-                    records_failed=products_quality.quarantined_count,
-                )
-
-                # --- Order Items → silver.order_items (insert-only merge) ---
-                bronze_order_items_df = spark.read.format("iceberg").load(
-                    table_identifier("bronze", "order_items")
-                )
-                order_items_silver_df = build_silver_order_items(bronze_order_items_df)
-                order_items_quality = run_quality_gate(
-                    order_items_silver_df, dataset_name="quarantine.order_items"
-                )
-                merge_into_silver(
-                    spark, order_items_quality.passed_df, "order_items", "order_item_id"
-                )
-                write_append(order_items_quality.quarantined_df, "quarantine", "order_items")
-                tracker.add_output(
-                    "silver.order_items",
-                    records_written=order_items_quality.passed_count,
-                    records_failed=order_items_quality.quarantined_count,
-                )
-
-                # Read from Silver — no direct Postgres connection in Gold
-                order_items_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "order_items")
-                )
-                products_df = spark.read.format("iceberg").load(
-                    table_identifier("silver", "products")
-                )
-
-                fact_order_items_df = (
-                    build_fact_order_items(
-                        orders_silver_df, order_items_df, products_df, customer_dim_full_df
-                    )
-                    .withColumn(
-                        "sk_order_id",
-                        F.md5(
-                            F.concat_ws(
-                                "||",
-                                F.lit("postgres"),
-                                F.col("order_id").cast("string"),
-                                F.col("product_id").cast("string"),
-                            )
-                        ),
-                    )
-                    .cache()
-                )
-
-                quality_result = run_quality_gate(
-                    fact_order_items_df, dataset_name="gold.fact_order_items"
-                )
-                reconcile_row_counts(
-                    source_count=fact_order_items_df.count(),
-                    landed_count=quality_result.passed_count + quality_result.quarantined_count,
-                )
-                validate_schema(quality_result.passed_df.schema, "gold.fact_order_items")
-                write_overwrite_partitions(
-                    quality_result.passed_df.sort("order_date", "customer_id"),
-                    "gold",
-                    "fact_order_items",
-                )
-                write_append(quality_result.quarantined_df, "quarantine", "fact_order_items")
-                tracker.add_output(
-                    "gold.fact_order_items",
-                    records_written=quality_result.passed_count,
-                    records_failed=quality_result.quarantined_count,
-                )
-
-                silver_reviews_df = build_silver_reviews(bronze["reviews"])
-                reviews_quality = run_quality_gate(silver_reviews_df, dataset_name="silver.reviews")
-                silver_reviews_passed = reviews_quality.passed_df.cache()
-                validate_schema(silver_reviews_passed.schema, "silver.reviews")
-                write_overwrite_partitions(silver_reviews_passed, "silver", "reviews")
-                write_append(reviews_quality.quarantined_df, "quarantine", "reviews")
-                tracker.add_output(
-                    "silver.reviews",
-                    records_written=reviews_quality.passed_count,
-                    records_failed=reviews_quality.quarantined_count,
-                )
-
-                clickstream_quality = run_quality_gate(
-                    bronze["clickstream"], dataset_name="quarantine.clickstream"
-                )
-                EVENT_TYPES = [
-                    "page_view",
-                    "add_to_cart",
-                    "remove_from_cart",
-                    "checkout_start",
-                    "checkout_complete",
-                ]
-                is_valid_event = F.col("event_type").isin(EVENT_TYPES)
-
-                silver_clickstream_passed = clickstream_quality.passed_df.filter(
-                    is_valid_event
-                ).cache()
-
-                invalid_event_quarantine = clickstream_quality.passed_df.filter(
-                    ~is_valid_event
-                ).withColumn("_quarantine_reason", F.lit("invalid_event_type"))
-                final_clickstream_quarantine = clickstream_quality.quarantined_df.unionByName(
-                    invalid_event_quarantine
-                )
-
-                validate_schema(silver_clickstream_passed.schema, "silver.clickstream")
-                write_overwrite_partitions(silver_clickstream_passed, "silver", "clickstream")
-                write_append(final_clickstream_quarantine, "quarantine", "clickstream")
-                tracker.add_output(
-                    "silver.clickstream",
-                    records_written=silver_clickstream_passed.count(),
-                    records_failed=final_clickstream_quarantine.count(),
-                )
-
-                quality_results_by_table = {
-                    "campaigns": campaigns_quality,
-                    "customers": customers_quality,
-                    "orders": orders_quality,
-                    "products": products_quality,
-                    "fact_order_items": quality_result,
-                    "reviews": reviews_quality,
-                    "clickstream": clickstream_quality,
-                }
-
-                build_dim_date(spark).writeTo(
-                    table_identifier("gold", "dim_date")
-                ).createOrReplace()
-                tracker.add_output("gold.dim_date", records_written=1096)
-
-                gold = {
-                    "daily_sales": build_daily_sales(quality_result.passed_df),
-                    "top_products": build_top_products(quality_result.passed_df, products_df),
-                    "customer_segments": build_customer_segments(
-                        quality_result.passed_df, customer_dim_full_df
-                    ),
-                    "conversion_rate": build_conversion_rate(silver_clickstream_passed),
-                    "campaign_effectiveness": build_campaign_effectiveness(bronze["campaigns"]),
-                    "product_sentiment": build_product_sentiment(
-                        silver_reviews_passed, products_df
-                    ),
-                    "dim_product": build_dim_product(products_df),
-                    "dim_campaign": build_dim_campaign(bronze["campaigns"]),
-                    "customer_clv": build_customer_clv(
-                        quality_result.passed_df, customer_dim_current_df
-                    ),
-                    "funnel_conversion": build_funnel_conversion(silver_clickstream_passed),
-                    "roas": build_roas(quality_result.passed_df, bronze["campaigns"]),
-                    "quarantine_summary": build_quarantine_summary(spark),
-                    "quality_gate_summary": build_quality_gate_summary(
-                        spark, date.today(), quality_results_by_table
-                    ),
-                }
-                for name, df in gold.items():
-                    validate_schema(df.schema, f"gold.{name}")
-                    write_overwrite_partitions(df, "gold", name)
-                    tracker.add_output(f"gold.{name}", records_written=df.count())
-
-                gold_from_iceberg = {
-                    name: spark.read.format("iceberg").load(table_identifier("gold", name))
-                    for name in gold
-                }
-                gold_from_iceberg["fact_order_items"] = spark.read.format("iceberg").load(
-                    table_identifier("gold", "fact_order_items")
-                )
-                gold_from_iceberg["dim_date"] = spark.read.format("iceberg").load(
-                    table_identifier("gold", "dim_date")
-                )
-                load_clickhouse_marts(gold_from_iceberg)
-
-                fact_order_items_df.unpersist()
-                silver_reviews_passed.unpersist()
-                silver_clickstream_passed.unpersist()
-                log.info("bronze_to_silver.done")
-            except Exception as exc:
-                log.error("bronze_to_silver.failed", error=str(exc), exc_info=True)
-                raise
-            finally:
-                if spark is not None:
-                    spark.stop()
+    log.info("bronze_to_silver.start", start=args.start, end=args.end, stage=args.stage)
+    _STAGES.get(args.stage, run_full_pipeline)(args)
 
 
 if __name__ == "__main__":
