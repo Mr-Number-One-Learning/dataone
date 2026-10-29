@@ -392,7 +392,7 @@ services:
     cpus: "0.2"
 
   tabix:
-    image: vchernikh/tabix:latest
+    image: vchernikh/tabix@sha256:8d6b9ecab6ae70b86bca4fcb073dddce69a6f64931a2146d1ec7405f54645ce0 # upstream publishes only :latest, so pin by digest
     profiles: [ "core" ]
     container_name: dataone-tabix
     networks: [ dataone-net ]
@@ -485,7 +485,7 @@ services:
     mem_limit: "256m"
 
   prefect-server:
-    image: prefecthq/prefect:3-latest
+    image: prefecthq/prefect:3.7.8-python3.12@sha256:a1a789339d6176bf4ba37e0e7658ad8a4b021e14a63912f00afcd3e8e75d1863
     profiles: [ "core" ]
     container_name: dataone-prefect-server
     networks: [ dataone-net ]
