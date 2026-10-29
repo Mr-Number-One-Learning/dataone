@@ -11,7 +11,15 @@ Run just the fast, non-Spark tests with `pytest -m "not spark"` (this is what
 Spark-backed ones with `make test-spark`.
 """
 
+import os
+
 import pytest
+
+# dataone.config refuses to import without secrets (no in-code defaults).
+# Set throwaway values before any test module imports it; setdefault leaves
+# real values from the environment alone.
+for _name in ("POSTGRES", "MONGO", "CLICKHOUSE", "NIFI"):
+    os.environ.setdefault(f"{_name}_PASSWORD", "test-password")
 
 
 @pytest.fixture(scope="session")

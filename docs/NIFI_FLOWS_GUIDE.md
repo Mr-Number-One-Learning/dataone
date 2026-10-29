@@ -13,3 +13,12 @@ This flow listens for incoming static CSV files containing marketing campaigns, 
 ## 🌐 REST API Ingestion to MongoDB
 This flow provides a plain-HTTP `ListenHTTP` endpoint for ingesting product reviews, processing the JSON payloads, and landing them into MongoDB for the subsequent batch ETL extraction.
 ![REST API Ingestion](images/nifi-flow-rest-api-ingestion-to-mongodb.png)
+
+## Secrets in exported flows
+
+`src/nifi_flows/Reviews_API_Ingestion.json` ships with a placeholder instead of
+the real MongoDB password: `mongodb://dataone:<MONGO_PASSWORD>@mongodb:27017`.
+After importing the flow, edit the MongoDB controller service's `mongo-uri`
+property and substitute the value of `MONGO_PASSWORD` from your `.env`
+(URL-encode it if it contains special characters). Never commit an export that
+contains the real value.

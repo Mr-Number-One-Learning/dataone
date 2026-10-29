@@ -46,7 +46,7 @@ services:
     container_name: dataone-kafka
     networks: [ dataone-net ]
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     environment:
       KAFKA_HEAP_OPTS: "-Xmx768m -Xms768m"
       KAFKA_PROCESS_ROLES: "broker,controller"
@@ -90,7 +90,7 @@ services:
     container_name: dataone-nifi
     networks: [ dataone-net ]
     ports:
-      - "8443:8443"
+      - "127.0.0.1:8443:8443"
       # Plain-HTTP ListenHTTP endpoint for the reviews ingestion flow (NOT
       # NiFi's own HTTPS UI/API, which stays on 8443). See
       # docs/NIFI_FLOWS_GUIDE.md.
@@ -122,7 +122,7 @@ services:
     container_name: dataone-postgres
     networks: [ dataone-net ]
     ports:
-      - "5445:5432"
+      - "127.0.0.1:5445:5432"
     environment:
       POSTGRES_DB: "${POSTGRES_DB}"
       POSTGRES_USER: "${POSTGRES_USER}"
@@ -145,7 +145,7 @@ services:
     container_name: dataone-mongodb
     networks: [ dataone-net ]
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: "${MONGO_USER}"
       MONGO_INITDB_ROOT_PASSWORD: "${MONGO_PASSWORD}"
@@ -168,9 +168,9 @@ services:
     container_name: dataone-clickhouse
     networks: [ dataone-net ]
     ports:
-      - "8123:8123"
-      - "9000:9000"
-      - "9363:9363" # Prometheus metrics endpoint — see infra/docker/clickhouse/conf.d/prometheus.xml
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9363:9363" # Prometheus metrics endpoint — see infra/docker/clickhouse/conf.d/prometheus.xml
     environment:
       CLICKHOUSE_DB: "${CLICKHOUSE_DB}"
       CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
@@ -260,8 +260,8 @@ services:
     container_name: dataone-spark-master
     networks: [ dataone-net ]
     ports:
-      - "7077:7077"
-      - "8099:8080"
+      - "127.0.0.1:7077:7077"
+      - "127.0.0.1:8099:8080"
     command: bash -c "mkdir -p /opt/spark/conf && echo 'spark.ui.prometheus.enabled=true' > /opt/spark/conf/spark-defaults.conf && echo 'spark.metrics.conf=/opt/spark/conf/metrics.properties' >> /opt/spark/conf/spark-defaults.conf && echo '*.sink.prometheusServlet.class=org.apache.spark.metrics.sink.PrometheusServlet' > /opt/spark/conf/metrics.properties && echo '*.sink.prometheusServlet.path=/metrics/prometheus' >> /opt/spark/conf/metrics.properties && echo 'master.sink.prometheusServlet.path=/metrics/master/prometheus' >> /opt/spark/conf/metrics.properties && /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --properties-file /opt/spark/conf/spark-defaults.conf"
     mem_limit: "512m"
     cpus: "0.5"
@@ -324,7 +324,7 @@ services:
     container_name: dataone-prometheus
     networks: [ dataone-net ]
     ports:
-      - "${PROMETHEUS_PORT}:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT}:9090"
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
@@ -337,7 +337,7 @@ services:
     container_name: dataone-grafana
     networks: [ dataone-net ]
     ports:
-      - "${GRAFANA_PORT}:3000"
+      - "127.0.0.1:${GRAFANA_PORT}:3000"
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
       GF_INSTALL_PLUGINS: "grafana-clickhouse-datasource"
@@ -364,7 +364,7 @@ services:
     container_name: dataone-kafka-ui
     networks: [ dataone-net ]
     ports:
-      - "8085:8080"
+      - "127.0.0.1:8085:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: dataone
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -380,7 +380,7 @@ services:
     container_name: dataone-mongo-express
     networks: [ dataone-net ]
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: "${MONGO_USER}"
       ME_CONFIG_MONGODB_ADMINPASSWORD: "${MONGO_PASSWORD}"
@@ -397,7 +397,7 @@ services:
     container_name: dataone-tabix
     networks: [ dataone-net ]
     ports:
-      - "${TABIX_PORT:-8088}:80"
+      - "127.0.0.1:${TABIX_PORT:-8088}:80"
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -413,7 +413,7 @@ services:
     networks: [ dataone-net ]
     environment:
       POSTGRES_USER: ${MARQUEZ_USER:-marquez}
-      POSTGRES_PASSWORD: ${MARQUEZ_PASSWORD:-marquez_password}
+      POSTGRES_PASSWORD: ${MARQUEZ_PASSWORD:?set MARQUEZ_PASSWORD in .env}
       POSTGRES_DB: marquez
     volumes:
       - marquez-data:/var/lib/postgresql/data
@@ -431,10 +431,10 @@ services:
     container_name: dataone-marquez-api
     networks: [ dataone-net ]
     ports:
-      - "5000:5000"
-      - "5001:5001"
+      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:5001:5001"
     environment:
-      JAVA_OPTS: "-Ddw.db.url=jdbc:postgresql://marquez-db:5432/marquez -Ddw.db.user=${MARQUEZ_USER:-marquez} -Ddw.db.password=${MARQUEZ_PASSWORD:-marquez_password}"
+      JAVA_OPTS: "-Ddw.db.url=jdbc:postgresql://marquez-db:5432/marquez -Ddw.db.user=${MARQUEZ_USER:-marquez} -Ddw.db.password=${MARQUEZ_PASSWORD:?set MARQUEZ_PASSWORD in .env}"
       MARQUEZ_DB_MIGRATION_ON_STARTUP: "true"
     depends_on:
       marquez-db:
@@ -448,7 +448,7 @@ services:
     container_name: dataone-marquez-web
     networks: [ dataone-net ]
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       MARQUEZ_HOST: marquez-api
       MARQUEZ_PORT: 5000
@@ -495,7 +495,7 @@ services:
       prefect-redis:
         condition: service_started
     ports:
-      - "4200:4200"
+      - "127.0.0.1:4200:4200"
     environment:
       PREFECT_API_DATABASE_CONNECTION_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/prefect"
       PREFECT_SERVER_API_HOST: "0.0.0.0"
