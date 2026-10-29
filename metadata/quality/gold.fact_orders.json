@@ -1,6 +1,0 @@
-{
-  "dataset": "gold.fact_orders",
-  "required_columns": [],
-  "column_bounds": {},
-  "custom_rules": []
-}

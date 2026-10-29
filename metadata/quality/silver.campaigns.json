@@ -1,5 +1,5 @@
 {
-  "dataset": "quarantine.order_facts",
+  "dataset": "silver.campaigns",
   "required_columns": [],
   "column_bounds": {},
   "custom_rules": []

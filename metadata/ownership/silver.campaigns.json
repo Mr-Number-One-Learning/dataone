@@ -1,0 +1,14 @@
+{
+  "dataset": "silver.campaigns",
+  "domain": "marketing",
+  "owner": "Marketing Ops Team",
+  "steward": "Data Platform Team",
+  "retention_policy": "7 years",
+  "sla": "99.9% fresh within 2 hours of ingestion",
+  "refresh_frequency": "daily",
+  "consumers": [
+    "gold.dim_campaign",
+    "gold.campaign_effectiveness",
+    "gold.roas"
+  ]
+}
