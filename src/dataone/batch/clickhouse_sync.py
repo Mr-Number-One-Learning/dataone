@@ -106,6 +106,6 @@ def load_clickhouse_marts(gold_tables: dict[str, DataFrame]) -> None:
             # so a cleanup failure can't mask the original exception.
             try:
                 _clickhouse_query(f"TRUNCATE TABLE IF EXISTS {clickhouse.db}.{staging}")
-            except Exception:
+            except (OSError, RuntimeError):  # URLError/HTTPError/timeouts, retries exhausted
                 log.warning("load_clickhouse_marts.staging_cleanup_failed", table=staging)
             raise

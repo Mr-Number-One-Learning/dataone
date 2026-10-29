@@ -472,16 +472,17 @@ def merge_into_silver(spark: SparkSession, df: DataFrame, table_name: str, merge
 def _sentiment_udf(text: str | None) -> float | None:
     """Lightweight polarity score in [-1, 1]. The import lives inside the
     UDF so it resolves on the executor's Python worker (cached in
-    sys.modules after the first row — not a per-row cost). A scoring failure
-    on one pathological body yields NULL for that row instead of failing
-    the whole stage."""
+    sys.modules after the first row — not a per-row cost). Only the scoring of
+    a malformed body (ValueError/TypeError) yields NULL for that row; a missing
+    textblob install or corpus is a deployment error and is allowed to fail
+    the stage instead of silently nulling every score."""
     if text is None:
         return None
-    try:
-        from textblob import TextBlob
+    from textblob import TextBlob
 
+    try:
         return float(TextBlob(text).sentiment.polarity)
-    except Exception:
+    except (ValueError, TypeError):
         return None
 
 

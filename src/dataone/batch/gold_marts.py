@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from datetime import date
 
+from pyspark.errors import AnalysisException
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
@@ -457,7 +458,7 @@ def build_quality_gate_summary(
                 else:
                     passed_cnt, quar_cnt = 0, 0
                 rows.append((batch_date, table_name, passed_cnt, quar_cnt))
-            except Exception as e:
+            except AnalysisException as e:  # e.g. the Iceberg table does not exist yet
                 log.warning(
                     "failed_to_query_quality_counts_for_summary", table=table_name, error=str(e)
                 )
