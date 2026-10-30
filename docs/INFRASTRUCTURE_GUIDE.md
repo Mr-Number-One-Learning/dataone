@@ -87,9 +87,13 @@ DataOne tracks PySpark job data lineage using **OpenLineage**. Instead of sendin
 | **Mongo Express** | `8081` | [http://localhost:8081](http://localhost:8081) |
 | **Spark Master UI** | `8099` | [http://localhost:8099](http://localhost:8099) |
 | **Prometheus** | `9090` | [http://localhost:9090](http://localhost:9090) |
+| **MinIO Console** | `9001` | [http://localhost:9001](http://localhost:9001) |
+| **MinIO S3 API** | `9100` | `http://localhost:9100` |
 | **Postgres** (JDBC) | `5445` | `jdbc:postgresql://localhost:5445/dataone` |
 | **ClickHouse** (HTTP) | `8123` | `http://localhost:8123` |
 | **Kafka** (External) | `9092` | `localhost:9092` |
+
+> **Security**: every published port is bound to `127.0.0.1`, so these URLs work from the host only. Passwords have no in-code defaults; `docker compose` and the Python config both fail fast if a required value in `.env` is missing.
 
 ## 📊 Grafana Provisioning & JSON Architecture
 
@@ -129,4 +133,4 @@ make down
 ```bash
 make clean
 ```
-> **Warning**: This destroys all Postgres data, Iceberg tables, ClickHouse marts, Kafka topics, and Grafana history. You will need to run `make seed` upon next boot.
+> **Warning**: `make clean` asks for confirmation (`make clean FORCE=1` skips it). It destroys all Postgres data, Iceberg tables (the MinIO volume), ClickHouse marts, Kafka topics, and Grafana history. You will need to run `make seed` upon next boot.

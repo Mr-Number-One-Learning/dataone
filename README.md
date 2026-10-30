@@ -31,6 +31,7 @@ Every tool in this stack was selected deliberately to maximize performance while
 | **OLTP & Catalog** | **PostgreSQL** | Simulated app DB (orders/customers) AND Iceberg's JDBC catalog | Reusing Postgres as the Iceberg catalog avoids deploying a heavy Hive Metastore just to track table metadata. |
 | **Document Store** | **MongoDB** | Raw product reviews (variable schema JSON) | Genuinely schema-flexible source—demonstrating a real NoSQL use-case, not a forced one. |
 | **Lakehouse Format** | **Apache Iceberg** | Bronze/Silver/Gold tables, schema evolution, time travel, SCD2 | Provides ACID transactions, schema evolution, and partition pruning without needing a Hive Metastore or live HDFS cluster. |
+| **Object Storage** | **MinIO** (S3-compatible) | Holds the Iceberg warehouse: Parquet data files and table metadata | Gives the lakehouse real object-store semantics (the same S3 API as production) on a laptop, instead of tying tables to one machine's local disk. Written through Iceberg's `S3FileIO`. |
 | **OLAP Serving** | **ClickHouse** | Pre-aggregated marts for the dashboard | Achieves sub-second aggregations on a single node with a fraction of the RAM footprint required by Hive or Presto. |
 | **Processing Engine** | **PySpark** | Both Batch ETL (SCD2, dedup) and Structured Streaming | Reuses the same codebase/skills for batch and real-time paradigms. Industry-standard for heavy data transformations. |
 | **Orchestration** | **Prefect** | Lightweight orchestration via Prefect flows and tasks | Prefect provides robust task-level retries and visibility with a minimal footprint, replacing the legacy custom scheduler. |
@@ -38,7 +39,7 @@ Every tool in this stack was selected deliberately to maximize performance while
 | **Data Lineage** | **Marquez & OpenLineage** | Visualizes PySpark job data lineage | Provides full observability into dataset lineage and job execution without heavy manual instrumentation. Uses Kafka transport for efficiency. |
 | **Metrics** | **Prometheus** | Scrapes Kafka/Spark/NiFi/Postgres exporters | Standard pull-based metrics with extremely low overhead. |
 
-*Deliberately excluded: Hive (its metastore role is covered by Postgres + Iceberg) and HDFS (we use HadoopFileIO on local disk to get Parquet I/O benefits at near-zero cost).*
+*Deliberately excluded: Hive (its metastore role is covered by Postgres + Iceberg) and HDFS (Iceberg writes Parquet straight to MinIO object storage via `S3FileIO`, with no NameNode/DataNode cluster to run).*
 
 ---
 
@@ -52,8 +53,17 @@ Every tool in this stack was selected deliberately to maximize performance while
 
 To get the full pipeline running locally on your laptop, ensure you have **Docker**, **Docker Compose**, and **Make** installed. 
 
+### 0. Configure the environment
+```bash
+cp .env.example .env
+```
+Edit `.env` before the first start:
+- Every `*_PASSWORD` / `MINIO_SECRET_KEY` value is **required** and has no in-code default; the apps refuse to start without them. Replace the `changeme` placeholders.
+- Set `MINIO_IMAGE` and `MINIO_MC_IMAGE` to MinIO image tags you have verified (see the comments in `.env.example`); `docker compose` stops with an error if they are empty.
+- All published ports are bound to `127.0.0.1`, so services are reachable from your machine only.
+
 ### 1. Start Infrastructure
-Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, NiFi, Grafana, and **Prefect**:
+Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, MinIO, NiFi, Grafana, and **Prefect**. The first time (and whenever `infra/docker/spark/` changes) build the Spark image first with `docker compose build`:
 ```bash
 make up
 ```
@@ -63,7 +73,7 @@ Wait 30-60 seconds for the containers to fully initialize. You can monitor the h
 ### 2. Generate Seed Data
 Generate initial synthetic data into Postgres (customers, orders, products) and MongoDB (reviews):
 ```bash
-# Ensure you are using Python 3.10+ and have installed dependencies via pip install -r requirements.txt
+# Ensure you are using Python 3.10+ and have installed dependencies: pip install -r requirements-dev.lock && pip install -e . --no-deps
 make seed
 ```
 
@@ -102,14 +112,15 @@ You can preview the visual layouts in the **[Dashboards Guide](docs/DASHBOARDS.m
 
 To tear down all resources and clear the persistent volumes, run:
 ```bash
-make clean
+make clean   # asks for confirmation; `make clean FORCE=1` skips the prompt
 ```
+This deletes the Postgres, MongoDB, ClickHouse, MinIO (the Iceberg warehouse) and Grafana volumes.
 
 ---
 
 ## ✅ Testing & CI
 
-Run the offline test suite locally with `make test` (Spark/Iceberg-dependent tests are opt-in via `make test-spark` / `make test-iceberg`), and get a line-by-line coverage report with `make coverage`. Every push and pull request also runs linting (Ruff + Black) and the full offline suite with coverage in GitHub Actions — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+Run the offline test suite locally with `make test` (Spark, Iceberg and MinIO tests are opt-in via `make test-spark` / `make test-iceberg` / `make test-minio`), and get a line-by-line coverage report with `make coverage`. Every pull request and push to `master` runs linting (Ruff + Black) and the default offline suite in GitHub Actions; the Spark and Iceberg suites run nightly and on manual dispatch — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml). Install the pre-commit hooks once with `pip install pre-commit && pre-commit install` to run Ruff and Black before each commit.
 
 ---
 

@@ -15,7 +15,7 @@ sequenceDiagram
     participant Spark as Spark job (bronze_to_silver)
     participant PG as Postgres (OLTP + _pipeline_runs)
     participant Mongo as MongoDB (reviews)
-    participant Ice as Iceberg lakehouse
+    participant Ice as Iceberg lakehouse (MinIO)
     participant CH as ClickHouse
     participant OL as OpenLineage / Marquez
 

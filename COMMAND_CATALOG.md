@@ -26,7 +26,7 @@ make down
 ```bash
 make clean
 ```
-- **Description:** Tears down all containers, networks, and **completely deletes** persistent docker volumes.
+- **Description:** Tears down all containers, networks, and **completely deletes** persistent docker volumes (databases, the MinIO-hosted Iceberg warehouse, checkpoints). Asks for confirmation first; `make clean FORCE=1` skips the prompt.
 - **Underlying Command:** `docker compose --profile core --profile batch down -v`
 - **Use Case:** Perform a hard reset to start with a fresh database and Iceberg catalog.
 
@@ -58,6 +58,7 @@ make run-batch
   - `START_DATE` (e.g. `2026-07-01`): The start date of the date range to backfill.
   - `END_DATE` (e.g. `2026-07-14`): The end date of the date range to backfill (requires `START_DATE`).
   - `STAGE` (e.g. `standardize_silver`): Medallion stage to run.
+  - `BATCH_CONTAINER`, `BATCH_DRIVER_MEMORY`, `BATCH_EXECUTOR_MEMORY` (defaults `dataone-spark-worker-batch`, `512m`, `4000m`): Override the batch container name and Spark memory, e.g. `make run-batch BATCH_EXECUTOR_MEMORY=2000m`.
 - **Allowed `STAGE` choices:**
   - `ingest_bronze` - Ingests external source file campaigns and reviews.
   - `standardize_silver` - Standardizes bronze tables, runs quality gates, and merges records into Silver Iceberg tables.
@@ -173,6 +174,14 @@ make test-iceberg
 - **Description:** Runs tests marked with `@pytest.mark.iceberg`.
 - **Underlying Command:** `pytest -v -m iceberg`
 - **Pre-requisites:** Requires a running docker-compose container environment.
+
+### Run MinIO Marked Tests
+```bash
+make test-minio
+```
+- **Description:** Runs tests marked with `@pytest.mark.minio` (an Iceberg table round-trip through S3FileIO).
+- **Underlying Command:** `pytest -v -m minio`
+- **Pre-requisites:** A local Java install, MinIO running (`docker compose --profile core up -d minio minio-init`), and `MINIO_TEST_ENDPOINT` (e.g. `http://localhost:9100`), `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` set.
 
 ### Check Coverage Report
 ```bash
