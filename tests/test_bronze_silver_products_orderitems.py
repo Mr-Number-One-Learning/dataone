@@ -3,15 +3,15 @@ Unit tests for the new Bronze/Silver transformation and ingestion functions for
 products and order_items. All tests run without a real SparkSession by patching
 the PySpark F.* calls that require a live SparkContext.
 """
+
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch, call
-
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _chainable_df():
     """Returns a MagicMock DataFrame that supports fluent chaining."""
@@ -33,6 +33,7 @@ def _chainable_df():
 # ---------------------------------------------------------------------------
 # Tests for build_silver_products
 # ---------------------------------------------------------------------------
+
 
 class TestBuildSilverProducts:
     """Tests for build_silver_products() Silver transformation function."""
@@ -83,6 +84,7 @@ class TestBuildSilverProducts:
 # Tests for build_silver_order_items
 # ---------------------------------------------------------------------------
 
+
 class TestBuildSilverOrderItems:
     """Tests for build_silver_order_items() Silver transformation function."""
 
@@ -92,8 +94,10 @@ class TestBuildSilverOrderItems:
 
         bronze_df = _chainable_df()
 
-        with patch("dataone.batch.bronze_to_silver._latest_per_key", return_value=bronze_df), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F:
+        with (
+            patch("dataone.batch.bronze_to_silver._latest_per_key", return_value=bronze_df),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+        ):
             mock_F.col.return_value = MagicMock()
             build_silver_order_items(bronze_df)
 
@@ -105,8 +109,10 @@ class TestBuildSilverOrderItems:
 
         bronze_df = _chainable_df()
 
-        with patch.object(bronze_to_silver, "_latest_per_key", return_value=bronze_df) as mock_dedup, \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F:
+        with (
+            patch.object(bronze_to_silver, "_latest_per_key", return_value=bronze_df) as mock_dedup,
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+        ):
             mock_F.col.return_value = MagicMock()
             bronze_to_silver.build_silver_order_items(bronze_df)
 
@@ -122,8 +128,10 @@ class TestBuildSilverOrderItems:
 
         bronze_df = _chainable_df()
 
-        with patch("dataone.batch.bronze_to_silver._latest_per_key", return_value=bronze_df), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F:
+        with (
+            patch("dataone.batch.bronze_to_silver._latest_per_key", return_value=bronze_df),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+        ):
             mock_F.col.return_value = MagicMock()
             build_silver_order_items(bronze_df)
 
@@ -133,6 +141,7 @@ class TestBuildSilverOrderItems:
 # ---------------------------------------------------------------------------
 # Tests for ingest_order_items_to_bronze (watermark logic)
 # ---------------------------------------------------------------------------
+
 
 class TestIngestOrderItemsToBronze:
     """Tests for the watermark logic in ingest_order_items_to_bronze()."""
@@ -148,9 +157,11 @@ class TestIngestOrderItemsToBronze:
         watermark_df.collect.return_value = [[500]]
         mock_spark.read.format.return_value.load.return_value = watermark_df
 
-        with patch.object(bronze_to_silver, "_postgres_max_id", return_value=500), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F, \
-             patch.object(bronze_to_silver, "table_identifier", return_value="test.table"):
+        with (
+            patch.object(bronze_to_silver, "_postgres_max_id", return_value=500),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+            patch.object(bronze_to_silver, "table_identifier", return_value="test.table"),
+        ):
             mock_F.max.return_value = MagicMock()
             count = bronze_to_silver.ingest_order_items_to_bronze(mock_spark)
 
@@ -172,16 +183,20 @@ class TestIngestOrderItemsToBronze:
         jdbc_df = _chainable_df()
         jdbc_df.count.return_value = 100
 
-        with patch.object(bronze_to_silver, "_postgres_max_id", return_value=200), \
-             patch.object(bronze_to_silver, "read_postgres_table", return_value=jdbc_df), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F, \
-             patch.object(bronze_to_silver, "table_identifier", return_value="test.table"):
+        with (
+            patch.object(bronze_to_silver, "_postgres_max_id", return_value=200),
+            patch.object(bronze_to_silver, "read_postgres_table", return_value=jdbc_df),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+            patch.object(bronze_to_silver, "table_identifier", return_value="test.table"),
+        ):
             mock_col = MagicMock()
-            mock_col.__gt__ = MagicMock(return_value=MagicMock())  # col > watermark returns a Column mock
+            mock_col.__gt__ = MagicMock(
+                return_value=MagicMock()
+            )  # col > watermark returns a Column mock
             mock_F.max.return_value = MagicMock()
             mock_F.col.return_value = mock_col
             mock_F.current_timestamp.return_value = MagicMock()
-            count = bronze_to_silver.ingest_order_items_to_bronze(mock_spark)
+            bronze_to_silver.ingest_order_items_to_bronze(mock_spark)
 
         # Guard filter must have been applied
         jdbc_df.filter.assert_called()
@@ -192,6 +207,7 @@ class TestIngestOrderItemsToBronze:
 # ---------------------------------------------------------------------------
 # Tests for ingest_products_to_bronze (snapshot overwrite logic)
 # ---------------------------------------------------------------------------
+
 
 class TestIngestProductsToBronze:
     """Tests for ingest_products_to_bronze()."""
@@ -204,9 +220,11 @@ class TestIngestProductsToBronze:
         products_df = _chainable_df()
         products_df.count.return_value = 50
 
-        with patch.object(bronze_to_silver, "read_postgres_table", return_value=products_df), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F, \
-             patch.object(bronze_to_silver, "table_identifier", return_value="test.table"):
+        with (
+            patch.object(bronze_to_silver, "read_postgres_table", return_value=products_df),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+            patch.object(bronze_to_silver, "table_identifier", return_value="test.table"),
+        ):
             mock_F.current_timestamp.return_value = MagicMock()
             count = bronze_to_silver.ingest_products_to_bronze(mock_spark)
 
@@ -222,9 +240,11 @@ class TestIngestProductsToBronze:
         products_df = _chainable_df()
         products_df.count.return_value = 0
 
-        with patch.object(bronze_to_silver, "read_postgres_table", return_value=products_df), \
-             patch("dataone.batch.bronze_to_silver.F") as mock_F, \
-             patch.object(bronze_to_silver, "table_identifier", return_value="test.table"):
+        with (
+            patch.object(bronze_to_silver, "read_postgres_table", return_value=products_df),
+            patch("dataone.batch.bronze_to_silver.F") as mock_F,
+            patch.object(bronze_to_silver, "table_identifier", return_value="test.table"),
+        ):
             mock_F.current_timestamp.return_value = MagicMock()
             count = bronze_to_silver.ingest_products_to_bronze(mock_spark)
 

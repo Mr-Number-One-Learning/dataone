@@ -10,6 +10,14 @@ Tests are categorized based on their dependency footprint. We avoid relying stri
 - **(No marker)**: Pure Python tests. These run instantly and mock out Spark interactions (e.g., CDC logic, orchestration scheduling logic).
 - **`@pytest.mark.spark`**: Requires a local `SparkSession` initialized in `conftest.py`. Used for verifying DataFrame transformations and Quality Gate behaviors without writing to disk.
 - **`@pytest.mark.iceberg`**: Requires a full `SparkSession` armed with the Iceberg SQL Extensions and PostgreSQL JDBC catalog. Downloads Maven JARs on first run. Validates Iceberg-specific DDL syntax, partition logic, and SCD Type 2 `MERGE INTO` operations.
+- **`@pytest.mark.minio`**: Opt-in. Writes and reads an Iceberg table through `S3FileIO` against a real MinIO; skipped unless `MINIO_TEST_ENDPOINT`, `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` are set. Run with `make test-minio`.
+
+The default `pytest` run (`make test`) excludes the `spark`, `iceberg` and `minio` markers (`addopts` in `pyproject.toml`). CI runs the default suite on every pull request and the Spark and Iceberg suites nightly.
+
+A few tests worth knowing about:
+- `tests/test_metadata_drift.py` regenerates `metadata/` with `scripts/generate_metadata.py` into a temp directory and fails if the committed files differ. Fix by re-running `python scripts/generate_metadata.py`.
+- `tests/test_stage_orchestration.py` checks the wiring of the batch stages (dispatch, call order, data passed between steps) with every collaborator mocked, so it needs no Spark.
+- `tests/conftest.py` sets throwaway `*_PASSWORD` values, because `dataone.config` has no in-code secret defaults.
 
 ---
 
@@ -34,7 +42,7 @@ make test-iceberg
 ```
 > **Note**: `make test-iceberg` requires Java installed locally and network access for first-time Maven JAR dependency resolution. It ensures structural fidelity against the real PySpark SQL API.
 
-All three should pass. If `test-spark`/`test-iceberg` fail with a Java-not-found error,
+The Spark and Iceberg suites should pass. If `test-spark`/`test-iceberg` fail with a Java-not-found error,
 install a JDK — this is expected on a machine that's never run PySpark locally before.
 
 ### Windows PySpark Test Setup

@@ -6,6 +6,7 @@ running, feeding the CDC simulator.
 
 Run: python -m dataone.generators.live_orders_generator
 """
+
 from __future__ import annotations
 
 import os
@@ -42,9 +43,7 @@ def _connect():
     return psycopg2.connect(postgres.dsn)
 
 
-def generate_live_orders(
-    conn, max_customer_id: int, product_prices: dict[int, float]
-) -> None:
+def generate_live_orders(conn, max_customer_id: int, product_prices: dict[int, float]) -> None:
     """Inserts a single new order into Postgres.
 
     Args:
@@ -151,19 +150,13 @@ def update_live_orders(conn) -> None:
             updated_count = 0
             for oid in placed_orders:
                 new_status = "cancelled" if random.random() < 0.05 else "shipped"
-                cur.execute(
-                    "UPDATE orders SET status = %s WHERE order_id = %s",
-                    (new_status, oid)
-                )
+                cur.execute("UPDATE orders SET status = %s WHERE order_id = %s", (new_status, oid))
                 updated_count += 1
 
             for oid in shipped_orders:
                 # Could add 'returned' simulation here later
                 new_status = "returned" if random.random() < 0.05 else "delivered"
-                cur.execute(
-                    "UPDATE orders SET status = %s WHERE order_id = %s",
-                    (new_status, oid)
-                )
+                cur.execute("UPDATE orders SET status = %s WHERE order_id = %s", (new_status, oid))
                 updated_count += 1
 
         conn.commit()
@@ -206,7 +199,7 @@ def main() -> None:
             "live_generator.ready",
             max_customer_id=max_customer_id,
             products=len(product_prices),
-            sleep_interval=sleep_interval
+            sleep_interval=sleep_interval,
         )
 
         update_cycle_counter = 0

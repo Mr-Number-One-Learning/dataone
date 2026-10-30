@@ -11,6 +11,7 @@ Written carefully against the real API, never executed in this project's dev
 sandbox (no Java, no network for the jar fetch) — first real run is wherever
 you actually have both.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -154,9 +155,10 @@ def test_new_and_unchanged_customers_in_same_batch(iceberg_spark):
         as_of=t2,
     )
 
-    rows = {r.customer_id: r for r in iceberg_spark.sql(
-        "SELECT * FROM dataone_catalog.gold.dim_customer"
-    ).collect()}
+    rows = {
+        r.customer_id: r
+        for r in iceberg_spark.sql("SELECT * FROM dataone_catalog.gold.dim_customer").collect()
+    }
     assert len(rows) == 2
     assert rows[1].is_current is True  # unchanged customer, still one row, no duplicate version
     assert rows[2].is_current is True  # new customer inserted

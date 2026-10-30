@@ -4,6 +4,7 @@ NiFi to pick up — simulates the batch file-drop source type.
 
 Run: python -m dataone.generators.campaign_generator
 """
+
 from __future__ import annotations
 
 import csv
@@ -23,12 +24,28 @@ GEN_MESSINESS_RATE = float(os.getenv("GEN_MESSINESS_RATE", "0.0"))
 
 CHANNELS = ["email", "social_media", "search_ads", "display_ads", "influencer", "affiliate"]
 CAMPAIGN_THEMES = [
-    "Summer Sale", "Flash Friday", "New Arrivals", "Loyalty Rewards", "Clearance",
-    "Back to School", "Holiday Special", "Member Exclusive", "Free Shipping Weekend",
+    "Summer Sale",
+    "Flash Friday",
+    "New Arrivals",
+    "Loyalty Rewards",
+    "Clearance",
+    "Back to School",
+    "Holiday Special",
+    "Member Exclusive",
+    "Free Shipping Weekend",
     "Category Spotlight",
 ]
-FIELDNAMES = ["campaign_id", "name", "channel", "start_date", "end_date",
-              "budget", "spend", "clicks", "conversions"]
+FIELDNAMES = [
+    "campaign_id",
+    "name",
+    "channel",
+    "start_date",
+    "end_date",
+    "budget",
+    "spend",
+    "clicks",
+    "conversions",
+]
 
 
 def build_campaign_row(campaign_id: int, now: datetime | None = None) -> dict:
@@ -36,7 +53,7 @@ def build_campaign_row(campaign_id: int, now: datetime | None = None) -> dict:
 
     Args:
         campaign_id (int): The assigned campaign ID.
-        now (datetime | None, optional): The current UTC datetime for bounding 
+        now (datetime | None, optional): The current UTC datetime for bounding
             campaign dates. Defaults to None.
 
     Returns:
@@ -91,11 +108,11 @@ def generate_campaign_file(
     campaign IDs 1..N_CAMPAIGNS — see generators/domain.py.
 
     Args:
-        n_campaigns (int, optional): The number of campaigns to generate. 
+        n_campaigns (int, optional): The number of campaigns to generate.
             Defaults to N_CAMPAIGNS.
-        output_dir (Path, optional): The directory to write the CSV file to. 
+        output_dir (Path, optional): The directory to write the CSV file to.
             Defaults to OUTPUT_DIR.
-        seed (int | None, optional): The random seed for deterministic generation. 
+        seed (int | None, optional): The random seed for deterministic generation.
             Defaults to SEED.
 
     Returns:

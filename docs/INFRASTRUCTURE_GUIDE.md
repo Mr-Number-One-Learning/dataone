@@ -19,9 +19,24 @@ Copy `.env.example` to `.env` before starting the cluster.
 | `CLICKHOUSE_*` | Analytics Database credentials | `default` / `changeme` |
 | `NIFI_HOST` / `NIFI_PORT` | Apache NiFi Address | `nifi` / `8443` |
 | `NIFI_REVIEWS_LISTEN_PORT` | Plain HTTP endpoint for ingestion | `9900` |
-| `ICEBERG_WAREHOUSE_PATH` | Lakehouse storage path | `/data/lakehouse` |
+| `ICEBERG_WAREHOUSE` | Iceberg warehouse location (`s3://...` = MinIO; unset = local `file://`) | `s3://lakehouse/warehouse` |
+| `ICEBERG_WAREHOUSE_PATH` | Local volume path for streaming checkpoints and NiFi staging | `/data/lakehouse` |
+| `MINIO_IMAGE` / `MINIO_MC_IMAGE` | MinIO server / `mc` client image tags (required, no default; see `.env.example`) | `quay.io/minio/minio:RELEASE...` |
+| `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` | MinIO admin (server + init job only) | `minioadmin` / `changeme1234` |
+| `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Least-privilege app user the Spark jobs use | `dataone-app` / `changeme1234` |
+| `MINIO_BUCKET` / `MINIO_ENDPOINT` / `MINIO_REGION` | Warehouse bucket, in-network endpoint, signing region | `lakehouse` / `http://minio:9000` / `us-east-1` |
 | `GRAFANA_ADMIN_PASSWORD` | Access password for the dashboard UI | `changeme` |
 | `GEN_*` | Data generator constraints (seed, row counts) | *See .env.example* |
+
+## 🪣 Object storage (MinIO)
+
+The Iceberg warehouse (Parquet data files plus table metadata) lives in the MinIO bucket `lakehouse`, written through Iceberg's `S3FileIO` (the `iceberg-aws-bundle` jar baked into the Spark image). The `minio-init` job creates the bucket and an application user limited to it, so Spark never sees the root credentials.
+
+- S3 API on the host: `http://localhost:9100` (host port 9000 is ClickHouse's). Console: `http://localhost:9001`.
+- The `lakehouse-data` volume is still mounted for **streaming checkpoints** and **NiFi's campaign staging files**; those are local by design.
+- After pulling this change, rebuild the Spark image (`docker compose build`, the jar list changed) and add the MinIO variables from `.env.example` to your `.env`.
+- Existing local-filesystem tables are not migrated (Iceberg metadata embeds absolute `file://` paths). Re-seed and re-run the batch, or unset `ICEBERG_WAREHOUSE` to keep using the local warehouse.
+- Opt-in integration test: `make test-minio` (needs MinIO running).
 
 ## 🚢 Deployment Commands
 
@@ -72,9 +87,13 @@ DataOne tracks PySpark job data lineage using **OpenLineage**. Instead of sendin
 | **Mongo Express** | `8081` | [http://localhost:8081](http://localhost:8081) |
 | **Spark Master UI** | `8099` | [http://localhost:8099](http://localhost:8099) |
 | **Prometheus** | `9090` | [http://localhost:9090](http://localhost:9090) |
+| **MinIO Console** | `9001` | [http://localhost:9001](http://localhost:9001) |
+| **MinIO S3 API** | `9100` | `http://localhost:9100` |
 | **Postgres** (JDBC) | `5445` | `jdbc:postgresql://localhost:5445/dataone` |
 | **ClickHouse** (HTTP) | `8123` | `http://localhost:8123` |
 | **Kafka** (External) | `9092` | `localhost:9092` |
+
+> **Security**: every published port is bound to `127.0.0.1`, so these URLs work from the host only. Passwords have no in-code defaults; `docker compose` and the Python config both fail fast if a required value in `.env` is missing.
 
 ## 📊 Grafana Provisioning & JSON Architecture
 
@@ -114,4 +133,4 @@ make down
 ```bash
 make clean
 ```
-> **Warning**: This destroys all Postgres data, Iceberg tables, ClickHouse marts, Kafka topics, and Grafana history. You will need to run `make seed` upon next boot.
+> **Warning**: `make clean` asks for confirmation (`make clean FORCE=1` skips it). It destroys all Postgres data, Iceberg tables (the MinIO volume), ClickHouse marts, Kafka topics, and Grafana history. You will need to run `make seed` upon next boot.

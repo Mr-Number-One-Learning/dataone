@@ -20,6 +20,11 @@ data/raw/*
 *.csv
 !data/seed/*.csv
 
+# Local Iceberg warehouse and checkpoints (Iceberg writes .json/.avro metadata
+# that the *.parquet rule above does not cover)
+data/lakehouse/*
+!data/lakehouse/.gitkeep
+
 # Docker / volumes
 infra/**/data/
 *.log
@@ -47,4 +52,4 @@ scratch/
 docs/Extra/
 docs/presentation/
 *.docx
-*.docs
+*.doc

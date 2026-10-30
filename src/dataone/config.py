@@ -4,15 +4,35 @@ Centralized configuration, loaded from environment variables (see .env.example).
 Every module in the package should import its settings from here rather than
 calling os.environ directly — keeps configuration discoverable in one place.
 """
+
 from __future__ import annotations
 
 import os
 import pathlib
 from dataclasses import dataclass
+from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _require_env(name: str) -> str:
+    """Returns a required secret from the environment, failing fast if unset.
+
+    Secrets deliberately have no in-code default: a silently weak fallback
+    password would let a misconfigured deployment start with known credentials.
+    Copy .env.example to .env and set real values (tests set throwaway ones in
+    tests/conftest.py).
+    """
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(
+            f"Required environment variable {name} is not set. "
+            "Copy .env.example to .env and fill it in."
+        )
+    return value
+
 
 # .env ships Docker-network service names (postgres, mongodb, kafka, ...)
 # because that's what code running INSIDE a container — e.g. the Spark jobs
@@ -120,16 +140,29 @@ def _resolve_bootstrap_servers(raw: str) -> str:
 class PostgresConfig:
     host: str = _resolve_host(os.getenv("POSTGRES_HOST", "localhost"))
     port: int = _resolve_postgres_port(
-        os.getenv("POSTGRES_HOST", "postgres"),
-        int(os.getenv("POSTGRES_PORT", "5432"))
+        os.getenv("POSTGRES_HOST", "postgres"), int(os.getenv("POSTGRES_PORT", "5432"))
     )
     db: str = os.getenv("POSTGRES_DB", "dataone")
     user: str = os.getenv("POSTGRES_USER", "dataone")
-    password: str = os.getenv("POSTGRES_PASSWORD", "changeme")
+    password: str = _require_env("POSTGRES_PASSWORD")
 
     @property
     def dsn(self) -> str:
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db}"
+        """libpq key/value connection string.
+
+        Used instead of a postgresql:// URL so the password is never embedded
+        in a URL (which tends to leak into logs and tracebacks) and needs no
+        percent-encoding. Values are quoted/escaped per libpq rules.
+        """
+
+        def q(value: object) -> str:
+            escaped = str(value).replace("\\", "\\\\").replace("'", "\\'")
+            return f"'{escaped}'"
+
+        return (
+            f"host={q(self.host)} port={q(self.port)} dbname={q(self.db)} "
+            f"user={q(self.user)} password={q(self.password)}"
+        )
 
 
 @dataclass(frozen=True)
@@ -138,11 +171,14 @@ class MongoConfig:
     port: int = int(os.getenv("MONGO_PORT", "27017"))
     db: str = os.getenv("MONGO_DB", "dataone")
     user: str = os.getenv("MONGO_USER", "dataone")
-    password: str = os.getenv("MONGO_PASSWORD", "changeme")
+    password: str = _require_env("MONGO_PASSWORD")
 
     @property
     def uri(self) -> str:
-        return f"mongodb://{self.user}:{self.password}@{self.host}:{self.port}"
+        return (
+            f"mongodb://{quote_plus(self.user)}:{quote_plus(self.password)}"
+            f"@{self.host}:{self.port}"
+        )
 
 
 @dataclass(frozen=True)
@@ -161,7 +197,7 @@ class ClickHouseConfig:
     port: int = int(os.getenv("CLICKHOUSE_PORT", "8123"))
     db: str = os.getenv("CLICKHOUSE_DB", "dataone_marts")
     user: str = os.getenv("CLICKHOUSE_USER", "default")
-    password: str = os.getenv("CLICKHOUSE_PASSWORD", "changeme")
+    password: str = _require_env("CLICKHOUSE_PASSWORD")
 
 
 @dataclass(frozen=True)
@@ -169,7 +205,7 @@ class NiFiConfig:
     host: str = _resolve_host(os.getenv("NIFI_HOST", "localhost"))
     api_port: int = int(os.getenv("NIFI_PORT", "8443"))
     username: str = os.getenv("NIFI_USERNAME", "admin")
-    password: str = os.getenv("NIFI_PASSWORD", "changeme1234")
+    password: str = _require_env("NIFI_PASSWORD")
     # Separate from api_port (NiFi's own HTTPS UI/API) — this is the
     # plain-HTTP port a ListenHTTP processor listens on for the reviews
     # ingestion flow. See docs/NIFI_FLOWS_GUIDE.md.
@@ -181,9 +217,39 @@ class NiFiConfig:
 
 
 @dataclass(frozen=True)
+class MinioConfig:
+    """S3-compatible object storage for the Iceberg warehouse.
+
+    The access key / secret are read lazily (properties) because they are only
+    needed when the warehouse actually lives on MinIO; a local-filesystem setup
+    (tests, a bare checkout) should not have to define them.
+    """
+
+    endpoint: str = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+    bucket: str = os.getenv("MINIO_BUCKET", "lakehouse")
+    region: str = os.getenv("MINIO_REGION", "us-east-1")
+
+    @property
+    def access_key(self) -> str:
+        return _require_env("MINIO_ACCESS_KEY")
+
+    @property
+    def secret_key(self) -> str:
+        return _require_env("MINIO_SECRET_KEY")
+
+
+@dataclass(frozen=True)
 class IcebergConfig:
+    # Where checkpoints / NiFi staging files live on the shared local volume.
     warehouse_path: str = os.getenv("ICEBERG_WAREHOUSE_PATH", "/data/lakehouse")
+    # Iceberg warehouse location. Set ICEBERG_WAREHOUSE=s3://<bucket>/<prefix> to
+    # use MinIO/S3; unset, it falls back to the local warehouse_path (file://).
+    warehouse: str = os.getenv("ICEBERG_WAREHOUSE") or f"file://{warehouse_path}"
     catalog_name: str = os.getenv("ICEBERG_CATALOG_NAME", "dataone_catalog")
+
+    @property
+    def uses_object_storage(self) -> bool:
+        return self.warehouse.startswith(("s3://", "s3a://"))
 
 
 postgres = PostgresConfig()
@@ -192,3 +258,4 @@ kafka = KafkaConfig()
 clickhouse = ClickHouseConfig()
 nifi = NiFiConfig()
 iceberg = IcebergConfig()
+minio = MinioConfig()

@@ -4,6 +4,7 @@ the Iceberg catalog config from iceberg_helpers.spark_catalog_conf() so both
 jobs definitely agree on catalog settings instead of each hardcoding their
 own copy, with Kafka packages added only when the streaming job needs them.
 """
+
 from __future__ import annotations
 
 from pyspark.sql import SparkSession
@@ -30,7 +31,7 @@ def build_spark_session(app_name: str, with_kafka: bool = False) -> SparkSession
 
     Args:
         app_name (str): The name of the Spark application.
-        with_kafka (bool, optional): Whether to include Kafka packages for 
+        with_kafka (bool, optional): Whether to include Kafka packages for
             streaming jobs. Defaults to False.
 
     Returns:
@@ -48,18 +49,30 @@ def build_spark_session(app_name: str, with_kafka: bool = False) -> SparkSession
         builder = builder.config("spark.ui.prometheus.enabled", "true")
 
     # OpenLineage configuration
-    builder = builder.config("spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener")
+    builder = builder.config(
+        "spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener"
+    )
     builder = builder.config("spark.openlineage.namespace", "dataone")
 
     # --- Switch Transport from HTTP to Kafka ---
     builder = builder.config("spark.openlineage.transport.type", "kafka")
     builder = builder.config("spark.openlineage.transport.topicName", "openlineage-events")
-    builder = builder.config("spark.openlineage.transport.properties.bootstrap.servers", "kafka:29092")
-    builder = builder.config("spark.openlineage.transport.properties.key.serializer", "org.apache.kafka.common.serialization.StringSerializer")
-    builder = builder.config("spark.openlineage.transport.properties.value.serializer", "org.apache.kafka.common.serialization.StringSerializer")
+    builder = builder.config(
+        "spark.openlineage.transport.properties.bootstrap.servers", "kafka:29092"
+    )
+    builder = builder.config(
+        "spark.openlineage.transport.properties.key.serializer",
+        "org.apache.kafka.common.serialization.StringSerializer",
+    )
+    builder = builder.config(
+        "spark.openlineage.transport.properties.value.serializer",
+        "org.apache.kafka.common.serialization.StringSerializer",
+    )
 
     # --- Filter Out Temporary Datasets ---
-    builder = builder.config("spark.openlineage.dataset.removePath.pattern", r"(.*\/tmp\/.*)|(.*\/_checkpoints\/.*)")
+    builder = builder.config(
+        "spark.openlineage.dataset.removePath.pattern", r"(.*\/tmp\/.*)|(.*\/_checkpoints\/.*)"
+    )
 
     for key, value in spark_catalog_conf().items():
         builder = builder.config(key, value)

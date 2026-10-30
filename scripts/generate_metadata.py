@@ -12,6 +12,7 @@ New tables added to ALL_TABLES in schemas.py are automatically picked up.
 """
 from __future__ import annotations
 
+import argparse
 import os
 import json
 import sys
@@ -167,6 +168,9 @@ def get_lineage(name: str) -> tuple[list[str], list[str]]:
     elif name == "silver.clickstream":
         upstreams  = ["bronze.clickstream"]
         downstreams = ["gold.conversion_rate", "gold.funnel_conversion"]
+    elif name == "silver.campaigns":
+        upstreams  = ["bronze.campaigns"]
+        downstreams = ["gold.dim_campaign", "gold.campaign_effectiveness", "gold.roas"]
     elif name == "silver.reviews":
         upstreams  = ["bronze.reviews"]
         downstreams = ["gold.product_sentiment"]
@@ -225,8 +229,8 @@ def get_lineage(name: str) -> tuple[list[str], list[str]]:
 
     return upstreams, downstreams
 
-def main():
-    base_dir = os.path.join(os.path.dirname(__file__), "..", "metadata")
+def main(output_dir: str | None = None):
+    base_dir = output_dir or os.path.join(os.path.dirname(__file__), "..", "metadata")
     for d in METADATA_DIRS:
         os.makedirs(os.path.join(base_dir, d), exist_ok=True)
         
@@ -323,4 +327,10 @@ def main():
     print("Metadata generation completed successfully!")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Write metadata here instead of the repo's metadata/ (used by the drift test).",
+    )
+    main(parser.parse_args().output_dir)

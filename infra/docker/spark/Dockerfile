@@ -1,7 +1,8 @@
 # Extends the official apache/spark image (NOT bitnami/spark — Bitnami moved
 # its container images behind a paid subscription in late 2025) with the
 # JARs our jobs actually need on
-# the classpath: Iceberg's Spark runtime, the Postgres JDBC driver (used by
+# the classpath: Iceberg's Spark runtime, Iceberg's AWS bundle (S3FileIO, used
+# to write the warehouse to MinIO), the Postgres JDBC driver (used by
 # Iceberg's JDBC catalog, backed by Postgres), the ClickHouse JDBC driver
 # (used to load curated aggregates into the marts that back Grafana), and the
 # Spark-Kafka connector (spark-sql-kafka + kafka-clients) baked in so the
@@ -30,6 +31,8 @@ USER root
 
 RUN curl -fsSL -o "/opt/spark/jars/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" \
       "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/${ICEBERG_VERSION}/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" \
+ && curl -fsSL -o "/opt/spark/jars/iceberg-aws-bundle-${ICEBERG_VERSION}.jar" \
+      "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar" \
  && curl -fsSL -o "/opt/spark/jars/postgresql-${POSTGRES_JDBC_VERSION}.jar" \
       "https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRES_JDBC_VERSION}/postgresql-${POSTGRES_JDBC_VERSION}.jar" \
  && curl -fsSL -o "/opt/spark/jars/clickhouse-jdbc-${CLICKHOUSE_JDBC_VERSION}-all.jar" \

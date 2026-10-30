@@ -8,6 +8,7 @@ review time instead.
 
 Pure text parsing, no ClickHouse instance needed.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,7 +16,9 @@ from pathlib import Path
 
 from dataone.utils import schemas
 
-DDL_PATH = Path(__file__).parent.parent / "infra" / "docker" / "clickhouse" / "init" / "002_marts.sql"
+DDL_PATH = (
+    Path(__file__).parent.parent / "infra" / "docker" / "clickhouse" / "init" / "002_marts.sql"
+)
 
 GOLD_SCHEMAS_BY_TABLE = {
     "daily_sales": schemas.GOLD_DAILY_SALES,
@@ -75,9 +78,9 @@ def test_every_gold_table_has_matching_clickhouse_ddl():
         assert table_name in tables, f"no CREATE TABLE found for dataone_marts.{table_name}"
         ddl_columns = tables[table_name]
         schema_columns = [name for name, _ in schema["columns"]]
-        assert ddl_columns == schema_columns, (
-            f"{table_name}: DDL columns {ddl_columns} != schemas.py columns {schema_columns}"
-        )
+        assert (
+            ddl_columns == schema_columns
+        ), f"{table_name}: DDL columns {ddl_columns} != schemas.py columns {schema_columns}"
 
 
 def test_live_activity_table_exists_with_expected_columns():

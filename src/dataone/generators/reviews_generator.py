@@ -10,6 +10,7 @@ Two ingestion modes, switched via GEN_REVIEWS_INGEST_MODE:
 
 Run: python -m dataone.generators.reviews_generator
 """
+
 from __future__ import annotations
 
 import os
@@ -195,6 +196,8 @@ def push_to_mongo(n_reviews: int = N_REVIEWS) -> int:
 
 
 import time
+
+
 def _post_review(review: dict) -> None:
     """POSTs a single review to NiFi via HTTP.
 
@@ -204,13 +207,15 @@ def _post_review(review: dict) -> None:
     max_attempts = 3
     for attempt in range(max_attempts):
         try:
-            resp = requests.post(nifi.reviews_ingest_url, json=review, timeout=REQUEST_TIMEOUT_SECONDS)
+            resp = requests.post(
+                nifi.reviews_ingest_url, json=review, timeout=REQUEST_TIMEOUT_SECONDS
+            )
             resp.raise_for_status()
             return
         except requests.RequestException:
             if attempt == max_attempts - 1:
                 raise
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
 
 
 def push_via_nifi(n_reviews: int = N_REVIEWS) -> int:

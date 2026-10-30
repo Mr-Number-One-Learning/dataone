@@ -18,8 +18,15 @@ To ensure you don't clash with system Python dependencies or PySpark mismatch is
 3. **Install Dependencies**:
    Install the standard project dependencies and the development dependencies (which include formatting and testing tools):
    ```bash
-   pip install -r requirements.txt
-   pip install -r requirements-dev.txt
+   pip install -r requirements-dev.lock   # reproducible: exact pinned versions
+   pip install -e .
+   ```
+   Dependencies are declared once, in `pyproject.toml`. `requirements.txt` / `requirements-dev.txt` simply point at it (`pip install -r requirements-dev.txt` also works, with unpinned `>=` ranges).
+
+   To regenerate the lockfiles after changing `pyproject.toml` (uses [uv](https://docs.astral.sh/uv/)):
+   ```bash
+   uv pip compile pyproject.toml -o requirements.lock --python-version 3.10
+   uv pip compile pyproject.toml --extra dev -o requirements-dev.lock --python-version 3.10
    ```
 
 4. **Install the Package (recommended)**:
@@ -56,17 +63,19 @@ All new functions, classes, and modules **must** contain [Google-style Docstring
 
 ## 🚀 Pull Request Process
 
-1. **Branching**: Branch off from `main` using a descriptive name (e.g., `feature/scd2-logic` or `bugfix/clickhouse-port`).
+1. **Branching**: Branch off from `master` using a descriptive name (e.g., `feature/scd2-logic` or `bugfix/clickhouse-port`).
 2. **Writing Tests**: Any new PySpark transformations, Quality Gate rules, or generator features must include accompanying tests in the `tests/` directory.
     - If testing pure Python logic, no marker is needed.
     - If testing a DataFrame transformation, use `@pytest.mark.spark`.
     - If testing Iceberg DDLs or Catalog behaviors, use `@pytest.mark.iceberg`.
+    - If testing against a real MinIO, use `@pytest.mark.minio` (opt-in, run with `make test-minio`).
+    - If you add or change a table in `utils/schemas.py`, re-run `python scripts/generate_metadata.py` and commit the result; `tests/test_metadata_drift.py` fails otherwise.
 3. **Run the Test Suite**:
    ```bash
    make test
    make test-spark
    make coverage   # pytest with a line-by-line coverage report
    ```
-4. **Submission**: Ensure `make lint` passes with 0 errors. Open a PR describing your architectural decisions and the impact of the changes.
+4. **Submission**: Ensure `make lint` passes with 0 errors (CI runs it on every PR). Optionally install the hooks with `pre-commit install` so Ruff and Black run on each commit. Open a PR describing your architectural decisions and the impact of the changes.
 
 Thank you for contributing to DataOne!

@@ -4,6 +4,7 @@ self-contained fake Postgres connection (not a real DB) — only psycopg2's
 import surface (psycopg2.Error, the cursor/connection protocol) needs to be
 real, never an actual database.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,13 +55,16 @@ def _patch_send(monkeypatch):
     """cdc_simulator imported `send` by name, so patch it there, not on the
     kafka_producers module — that's where the call actually resolves."""
     sent = []
-    monkeypatch.setattr(cdc, "send", lambda topic, value, key=None: sent.append((topic, value, key)))
+    monkeypatch.setattr(
+        cdc, "send", lambda topic, value, key=None: sent.append((topic, value, key))
+    )
     return sent
 
 
 # ---------------------------------------------------------------------------
 # _serialize_row / emit_change_event
 # ---------------------------------------------------------------------------
+
 
 def test_serialize_row_converts_datetime_to_iso():
     ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
@@ -85,6 +89,7 @@ def test_emit_change_event_payload_shape(_patch_send):
 # get_watermark
 # ---------------------------------------------------------------------------
 
+
 def test_get_watermark_falls_back_to_epoch_when_nothing_stored():
     conn = _FakeConn(query_handler=lambda q, p: [])
     assert cdc.get_watermark(conn, "customers") == cdc.EPOCH
@@ -99,6 +104,7 @@ def test_get_watermark_returns_stored_value():
 # ---------------------------------------------------------------------------
 # poll_once
 # ---------------------------------------------------------------------------
+
 
 def test_poll_once_emits_all_rows_and_advances_to_max_watermark(_patch_send):
     t0 = datetime(2026, 6, 1, tzinfo=timezone.utc)

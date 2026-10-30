@@ -13,6 +13,7 @@ PySpark's stable, documented API (df.filter, F.col, F.when/.otherwise — none
 of it exotic), but it has only been syntax-checked, never executed. First
 real test is on an actual Spark session.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -38,7 +39,7 @@ class QualityResult:
 def check_nulls(required_columns: list[str]) -> Column:
     """Generates a boolean column expression to identify null values in required columns.
 
-    Boolean column expression: True where the row violates a required-column-not-null 
+    Boolean column expression: True where the row violates a required-column-not-null
     rule (i.e. SHOULD be quarantined).
 
     Args:
@@ -61,7 +62,7 @@ def check_ranges(column_bounds: dict[str, tuple[float | None, float | None]]) ->
     that side", e.g. {"unit_price": (0, None), "quantity": (1, None)}.
 
     Args:
-        column_bounds (dict[str, tuple[float | None, float | None]]): A dictionary 
+        column_bounds (dict[str, tuple[float | None, float | None]]): A dictionary
             mapping column names to (low, high) bounds.
 
     Returns:
@@ -114,7 +115,7 @@ def run_quality_gate(
     Args:
         df (DataFrame): The input PySpark DataFrame.
         required_columns (list[str] | None): A list of column names that must not be null.
-        column_bounds (dict[str, tuple[float | None, float | None]] | None): 
+        column_bounds (dict[str, tuple[float | None, float | None]] | None):
             A dictionary mapping column names to (low, high) bounds.
         dataset_name (str | None): Optional dataset name to load rules from metadata.
 
@@ -126,7 +127,7 @@ def run_quality_gate(
         ValueError: If quality rules reference columns absent from the DataFrame.
     """
     from dataone.metadata.registry import get_registry
-    
+
     if dataset_name:
         registry = get_registry()
         quality_config = registry.get_quality(dataset_name)

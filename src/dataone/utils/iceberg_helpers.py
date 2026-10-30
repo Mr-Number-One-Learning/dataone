@@ -11,9 +11,10 @@ needs, plus generating the DDL strings the jobs execute via spark.sql(...) —
 never a separate pyiceberg Catalog object. Property names below were checked
 against current Apache Iceberg docs, not recalled from memory alone.
 """
+
 from __future__ import annotations
 
-from dataone.config import iceberg, postgres
+from dataone.config import iceberg, minio, postgres
 
 LAYERS = ("bronze", "silver", "gold", "quarantine")
 
@@ -40,17 +41,33 @@ def spark_catalog_conf() -> dict[str, str]:
     """
     name = iceberg.catalog_name
     jdbc_uri = f"jdbc:postgresql://{postgres.host}:{postgres.port}/{postgres.db}"
-    return {
+    conf = {
         f"spark.sql.catalog.{name}": "org.apache.iceberg.spark.SparkCatalog",
         f"spark.sql.catalog.{name}.catalog-impl": "org.apache.iceberg.jdbc.JdbcCatalog",
         f"spark.sql.catalog.{name}.uri": jdbc_uri,
         f"spark.sql.catalog.{name}.jdbc.user": postgres.user,
         f"spark.sql.catalog.{name}.jdbc.password": postgres.password,
-        f"spark.sql.catalog.{name}.warehouse": f"file://{iceberg.warehouse_path}",
+        f"spark.sql.catalog.{name}.warehouse": iceberg.warehouse,
         # Required once per Spark session to enable Iceberg's extra SQL
         # commands (MERGE INTO, CALL ... stored procedures, etc).
         "spark.sql.extensions": "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
     }
+    if iceberg.uses_object_storage:
+        # Iceberg's native S3FileIO (iceberg-aws-bundle jar, baked into the Spark
+        # image) talks to MinIO directly — no Hadoop S3A jars needed. Path-style
+        # addressing is required because MinIO has no per-bucket DNS names.
+        prefix = f"spark.sql.catalog.{name}"
+        conf.update(
+            {
+                f"{prefix}.io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+                f"{prefix}.s3.endpoint": minio.endpoint,
+                f"{prefix}.s3.path-style-access": "true",
+                f"{prefix}.s3.access-key-id": minio.access_key,
+                f"{prefix}.s3.secret-access-key": minio.secret_key,
+                f"{prefix}.client.region": minio.region,
+            }
+        )
+    return conf
 
 
 def table_identifier(layer: str, table_name: str) -> str:
@@ -67,7 +84,7 @@ def table_identifier(layer: str, table_name: str) -> str:
 
     Returns:
         str: The fully-qualified table identifier.
-    
+
     Raises:
         ValueError: If the provided layer is not a valid predefined layer.
     """

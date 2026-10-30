@@ -5,6 +5,7 @@ Prometheus textfile collector or stdout aggregation later).
 Level is taken from the LOG_LEVEL env var (default INFO) so a debug run
 doesn't require a code change.
 """
+
 from __future__ import annotations
 
 import logging

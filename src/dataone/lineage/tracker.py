@@ -12,16 +12,18 @@ When the pipeline is invoked by a Prefect orchestrator flow, the flow sets
 every child Spark job's OpenLineage events carry a ``parent`` run facet —
 letting Marquez draw the orchestrator → job relationship automatically.
 """
+
 from __future__ import annotations
 
+import contextlib
+import datetime
 import os
 import uuid
-import datetime
-import contextlib
-import psycopg2
-from typing import List, Dict, Any, Optional
+from typing import Any
 
-from dataone.config import postgres, kafka
+import psycopg2
+
+from dataone.config import postgres
 from dataone.ingestion import kafka_producers
 from dataone.utils.logging_config import get_logger
 
@@ -30,9 +32,7 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # OpenLineage spec constants
 # ---------------------------------------------------------------------------
-_OL_SCHEMA_URL = (
-    "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent"
-)
+_OL_SCHEMA_URL = "https://openlineage.io/spec/2-0-2/OpenLineage.json#/$defs/RunEvent"
 _OL_PRODUCER = "https://github.com/Mr-Number-One-Learning/dataone"
 _PROCESSING_ENGINE_NAME = "spark"
 _PROCESSING_ENGINE_VERSION = "3.5.1"
@@ -43,11 +43,8 @@ class Dataset:
         self.name = name
         self.namespace = namespace
 
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "namespace": self.namespace,
-            "name": self.name
-        }
+    def to_dict(self) -> dict[str, Any]:
+        return {"namespace": self.namespace, "name": self.name}
 
 
 class DatasetVersion:
@@ -62,7 +59,7 @@ class PipelineRun:
         self.job_name = job_name
         self.status = status
         self.start_time = datetime.datetime.now(datetime.timezone.utc)
-        self.end_time: Optional[datetime.datetime] = None
+        self.end_time: datetime.datetime | None = None
 
 
 class LineageTracker:
@@ -77,59 +74,57 @@ class LineageTracker:
     events will include a ``parent`` run facet so that Marquez can link the
     Spark job run back to the orchestrator flow run.
     """
-    def __init__(
-        self,
-        job_name: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None
-    ):
+
+    def __init__(self, job_name: str, start_date: str | None = None, end_date: str | None = None):
         self.job_name = job_name
         self.run_id = str(uuid.uuid4())
         self.start_date = start_date
         self.end_date = end_date
-        self.inputs: List[Dataset] = []
-        self.outputs: List[Dict[str, Any]] = []
+        self.inputs: list[Dataset] = []
+        self.outputs: list[dict[str, Any]] = []
         self.status = "running"
         self.records_processed = 0
         self.records_quarantined = 0
-        self.error_message: Optional[str] = None
+        self.error_message: str | None = None
         self.start_time = datetime.datetime.now(datetime.timezone.utc)
-        self.end_time: Optional[datetime.datetime] = None
+        self.end_time: datetime.datetime | None = None
 
         # Prefect orchestrator passes these so child jobs can declare a
         # parent run in their OpenLineage events.
-        self._parent_run_id: Optional[str] = os.environ.get("PARENT_RUN_ID")
-        self._parent_job_name: Optional[str] = os.environ.get("PARENT_JOB_NAME")
+        self._parent_run_id: str | None = os.environ.get("PARENT_RUN_ID")
+        self._parent_job_name: str | None = os.environ.get("PARENT_JOB_NAME")
 
     def __enter__(self) -> LineageTracker:
         self.start_time = datetime.datetime.now(datetime.timezone.utc)
         log.info("lineage.run.start", job=self.job_name, run_id=self.run_id)
-        
+
         # 1. Postgres Start Log
         self._db_start_run()
-        
+
         # 2. Emit Start Lineage Event
         self._emit_openlineage_event("START")
-        
+
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end_time = datetime.datetime.now(datetime.timezone.utc)
-        
+
         if exc_type is None:
             self.status = "success"
         else:
             self.status = "failed"
             self.error_message = str(exc_val)
-            log.error("lineage.run.error", job=self.job_name, run_id=self.run_id, error=self.error_message)
+            log.error(
+                "lineage.run.error", job=self.job_name, run_id=self.run_id, error=self.error_message
+            )
 
         # 1. Postgres Complete Log
         self._db_complete_run()
-        
+
         # 2. Emit End Lineage Event
         event_type = "COMPLETE" if self.status == "success" else "FAIL"
         self._emit_openlineage_event(event_type)
-        
+
         log.info("lineage.run.complete", job=self.job_name, run_id=self.run_id, status=self.status)
 
     def add_input(self, dataset_name: str):
@@ -138,11 +133,13 @@ class LineageTracker:
 
     def add_output(self, dataset_name: str, records_written: int = 0, records_failed: int = 0):
         """Registers an output dataset for the pipeline run."""
-        self.outputs.append({
-            "dataset": Dataset(dataset_name),
-            "records_written": records_written,
-            "records_failed": records_failed
-        })
+        self.outputs.append(
+            {
+                "dataset": Dataset(dataset_name),
+                "records_written": records_written,
+                "records_failed": records_failed,
+            }
+        )
         self.records_processed += records_written
         self.records_quarantined += records_failed
 
@@ -178,7 +175,13 @@ class LineageTracker:
                             error_message = %s
                         WHERE run_id = %s
                         """,
-                        (self.status, self.records_processed, self.records_quarantined, self.error_message, self.run_id),
+                        (
+                            self.status,
+                            self.records_processed,
+                            self.records_quarantined,
+                            self.error_message,
+                            self.run_id,
+                        ),
                     )
         except Exception as e:
             log.warning("lineage.db_complete_run.failed", error=str(e))
@@ -187,7 +190,7 @@ class LineageTracker:
     # OpenLineage event emission
     # ------------------------------------------------------------------
 
-    def _build_run_facets(self) -> Dict[str, Any]:
+    def _build_run_facets(self) -> dict[str, Any]:
         """Builds the ``run.facets`` dict with standard OL facets.
 
         Includes:
@@ -197,7 +200,7 @@ class LineageTracker:
         - ``parent`` (conditional): links this run to a Prefect
           orchestrator flow when ``PARENT_RUN_ID`` is set.
         """
-        facets: Dict[str, Any] = {}
+        facets: dict[str, Any] = {}
 
         # nominalTime — tells Marquez what logical time window this run covers
         nominal_start = self.start_date or self.start_time.isoformat()
@@ -234,14 +237,14 @@ class LineageTracker:
         return facets
 
     @staticmethod
-    def _build_output_facets(out: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_output_facets(out: dict[str, Any]) -> dict[str, Any]:
         """Builds spec-compliant output dataset facets.
 
         Uses the standard ``outputStatistics`` facet for ``rowCount`` and a
         custom ``dataone_quality`` facet for quarantine/failure counts that
         are not part of the OL spec.
         """
-        facets: Dict[str, Any] = {
+        facets: dict[str, Any] = {
             "outputStatistics": {
                 "_producer": _OL_PRODUCER,
                 "_schemaURL": "https://openlineage.io/spec/facets/1-0-2/OutputStatisticsOutputDatasetFacet.json#/$defs/OutputStatisticsOutputDatasetFacet",
@@ -291,7 +294,7 @@ class LineageTracker:
                 ],
                 "producer": _OL_PRODUCER,
             }
-            
+
             # Send to openlineage-events topic using confluent-kafka producer / kafka utility
             kafka_producers.send("openlineage-events", payload)
             kafka_producers.flush_producer()

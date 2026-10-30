@@ -20,6 +20,7 @@ streaming sink's `.toTable()` call was verified against current Iceberg
 docs, not recalled from memory), but this project's dev sandbox can't run
 any of it for real. First real run is on your laptop.
 """
+
 from __future__ import annotations
 
 from pyspark.sql import DataFrame
@@ -229,7 +230,7 @@ def write_to_bronze(
 
 def build_live_activity_aggregate(clickstream_df: DataFrame) -> DataFrame:
     """Builds a real-time activity aggregate from the clickstream.
-    
+
     1-minute tumbling window of clickstream activity — the real-time
     pulse metric for the dashboard.
 
@@ -366,11 +367,15 @@ def main() -> None:
     bootstrap_lakehouse(spark)
 
     cdc_raw = read_kafka_stream(spark, kafka.topic_orders_cdc)
-    cdc_good, cdc_bad = parse_with_dead_letter(cdc_raw, _CDC_ENVELOPE_SCHEMA, kafka.topic_orders_cdc)
+    cdc_good, cdc_bad = parse_with_dead_letter(
+        cdc_raw, _CDC_ENVELOPE_SCHEMA, kafka.topic_orders_cdc
+    )
     cdc_parsed = parse_cdc_stream(cdc_good)
-    
+
     clickstream_raw = read_kafka_stream(spark, kafka.topic_clickstream)
-    clickstream_good, clickstream_bad = parse_with_dead_letter(clickstream_raw, _CLICKSTREAM_EVENT_SCHEMA, kafka.topic_clickstream)
+    clickstream_good, clickstream_bad = parse_with_dead_letter(
+        clickstream_raw, _CLICKSTREAM_EVENT_SCHEMA, kafka.topic_clickstream
+    )
     clickstream_parsed = parse_clickstream_stream(clickstream_good)
 
     from dataone.lineage.tracker import LineageTracker
@@ -398,7 +403,9 @@ def main() -> None:
             event_time_col="ts",
         )
 
-        dlq_query = write_to_bronze(cdc_bad.unionByName(clickstream_bad), "bronze", "dead_letters", "dead_letters")
+        dlq_query = write_to_bronze(
+            cdc_bad.unionByName(clickstream_bad), "bronze", "dead_letters", "dead_letters"
+        )
 
         live_activity_query = write_live_aggregates_to_clickhouse(
             build_live_activity_aggregate(clickstream_parsed)
@@ -434,4 +441,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

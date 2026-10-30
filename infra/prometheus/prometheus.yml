@@ -46,6 +46,12 @@ scrape_configs:
     static_configs:
       - targets: ["clickhouse:9363"]
 
+  - job_name: "minio"
+    # Unauthenticated because the minio service sets MINIO_PROMETHEUS_AUTH_TYPE=public.
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+
   - job_name: "cadvisor"
     static_configs:
       - targets: ["cadvisor:8080"]

@@ -3,6 +3,7 @@ Shared product-catalog domain data used by orders_generator (to create the
 catalog) and referenced read-only by clickstream/reviews generators so every
 generator agrees on the same categories/price ranges without duplicating them.
 """
+
 from __future__ import annotations
 
 import psycopg2
@@ -19,33 +20,108 @@ log = get_logger(__name__)
 N_CAMPAIGNS = 50
 
 CATEGORY_PRODUCTS = {
-    "Electronics": ["Wireless Headphones", "Bluetooth Speaker", "Smartwatch", "Laptop Stand",
-                    "USB-C Hub", "Action Camera", "Gaming Mouse", "Portable Charger"],
-    "Apparel": ["Cotton T-Shirt", "Denim Jacket", "Running Shoes", "Wool Sweater",
-                "Yoga Pants", "Baseball Cap", "Leather Belt", "Summer Dress"],
-    "Home & Garden": ["Ceramic Vase", "Throw Pillow", "Garden Hose", "LED Desk Lamp",
-                      "Wall Clock", "Storage Basket", "Scented Candle", "Patio Chair"],
-    "Sports": ["Yoga Mat", "Dumbbell Set", "Tennis Racket", "Cycling Helmet",
-               "Resistance Bands", "Soccer Ball", "Hiking Backpack", "Water Bottle"],
-    "Beauty": ["Facial Serum", "Moisturizing Cream", "Lip Balm Set", "Hair Dryer",
-               "Makeup Brush Set", "Shampoo Bar", "Perfume", "Nail Polish Set"],
-    "Toys": ["Building Blocks Set", "Remote Control Car", "1000pc Puzzle", "Plush Bear",
-             "Board Game", "Action Figure", "Art Supply Kit", "Toy Train Set"],
-    "Books": ["Mystery Novel", "Cookbook", "Self-Help Guide", "Sci-Fi Anthology",
-              "Picture Book", "History Atlas", "Poetry Collection", "Travel Guide"],
-    "Grocery": ["Organic Coffee Beans", "Pasta Variety Pack", "Olive Oil", "Granola Bars",
-                "Herbal Tea Set", "Dark Chocolate Bars", "Spice Set", "Almond Butter"],
+    "Electronics": [
+        "Wireless Headphones",
+        "Bluetooth Speaker",
+        "Smartwatch",
+        "Laptop Stand",
+        "USB-C Hub",
+        "Action Camera",
+        "Gaming Mouse",
+        "Portable Charger",
+    ],
+    "Apparel": [
+        "Cotton T-Shirt",
+        "Denim Jacket",
+        "Running Shoes",
+        "Wool Sweater",
+        "Yoga Pants",
+        "Baseball Cap",
+        "Leather Belt",
+        "Summer Dress",
+    ],
+    "Home & Garden": [
+        "Ceramic Vase",
+        "Throw Pillow",
+        "Garden Hose",
+        "LED Desk Lamp",
+        "Wall Clock",
+        "Storage Basket",
+        "Scented Candle",
+        "Patio Chair",
+    ],
+    "Sports": [
+        "Yoga Mat",
+        "Dumbbell Set",
+        "Tennis Racket",
+        "Cycling Helmet",
+        "Resistance Bands",
+        "Soccer Ball",
+        "Hiking Backpack",
+        "Water Bottle",
+    ],
+    "Beauty": [
+        "Facial Serum",
+        "Moisturizing Cream",
+        "Lip Balm Set",
+        "Hair Dryer",
+        "Makeup Brush Set",
+        "Shampoo Bar",
+        "Perfume",
+        "Nail Polish Set",
+    ],
+    "Toys": [
+        "Building Blocks Set",
+        "Remote Control Car",
+        "1000pc Puzzle",
+        "Plush Bear",
+        "Board Game",
+        "Action Figure",
+        "Art Supply Kit",
+        "Toy Train Set",
+    ],
+    "Books": [
+        "Mystery Novel",
+        "Cookbook",
+        "Self-Help Guide",
+        "Sci-Fi Anthology",
+        "Picture Book",
+        "History Atlas",
+        "Poetry Collection",
+        "Travel Guide",
+    ],
+    "Grocery": [
+        "Organic Coffee Beans",
+        "Pasta Variety Pack",
+        "Olive Oil",
+        "Granola Bars",
+        "Herbal Tea Set",
+        "Dark Chocolate Bars",
+        "Spice Set",
+        "Almond Butter",
+    ],
 }
 
 CATEGORY_CODES = {
-    "Electronics": "ELC", "Apparel": "APP", "Home & Garden": "HOM", "Sports": "SPO",
-    "Beauty": "BEA", "Toys": "TOY", "Books": "BOK", "Grocery": "GRO",
+    "Electronics": "ELC",
+    "Apparel": "APP",
+    "Home & Garden": "HOM",
+    "Sports": "SPO",
+    "Beauty": "BEA",
+    "Toys": "TOY",
+    "Books": "BOK",
+    "Grocery": "GRO",
 }
 
 CATEGORY_PRICE_RANGE = {
-    "Electronics": (15, 500), "Apparel": (10, 150), "Home & Garden": (8, 200),
-    "Sports": (10, 250), "Beauty": (5, 80), "Toys": (5, 100),
-    "Books": (8, 40), "Grocery": (3, 50),
+    "Electronics": (15, 500),
+    "Apparel": (10, 150),
+    "Home & Garden": (8, 200),
+    "Sports": (10, 250),
+    "Beauty": (5, 80),
+    "Toys": (5, 100),
+    "Books": (8, 40),
+    "Grocery": (3, 50),
 }
 
 CATEGORIES = list(CATEGORY_PRODUCTS.keys())

@@ -5,6 +5,7 @@ bonus criterion.
 
 Run: python -m dataone.generators.orders_generator
 """
+
 from __future__ import annotations
 
 import os
@@ -129,12 +130,14 @@ def _product_row(pid: int, faker: Faker, now: datetime) -> tuple[tuple, float]:
             name = None
         elif noise_type == "null_category":
             category = None
-            
+
     row = (pid, sku, name, category, price, created_at.isoformat(), created_at.isoformat())
     return row, price
 
 
-def generate_customers(conn, n: int, start_id: int, faker: Faker) -> tuple[int, dict[int, datetime]]:
+def generate_customers(
+    conn, n: int, start_id: int, faker: Faker
+) -> tuple[int, dict[int, datetime]]:
     """Generates and bulk-inserts synthetic customers into the database.
 
     Bulk-insert n synthetic customers via COPY. IDs assigned explicitly
@@ -182,8 +185,8 @@ def generate_products(conn, n: int, start_id: int, faker: Faker) -> dict[int, fl
         faker (Faker): The Faker instance for generating fake data.
 
     Returns:
-        dict[int, float]: A dictionary mapping {product_id: unit_price} so 
-            generate_orders can snapshot price-at-purchase consistently with 
+        dict[int, float]: A dictionary mapping {product_id: unit_price} so
+            generate_orders can snapshot price-at-purchase consistently with
             the catalog instead of re-sampling.
     """
     now = datetime.now(timezone.utc)
@@ -230,7 +233,7 @@ def _zipf_customer_assignment(n_orders: int, max_customer_id: int) -> list[int]:
     """
     customer_ids = list(range(1, max_customer_id + 1))
     random.shuffle(customer_ids)
-    weights = [1.0 / (rank ** CUSTOMER_SKEW_EXPONENT) for rank in range(1, max_customer_id + 1)]
+    weights = [1.0 / (rank**CUSTOMER_SKEW_EXPONENT) for rank in range(1, max_customer_id + 1)]
     return random.choices(customer_ids, weights=weights, k=n_orders)
 
 
@@ -267,22 +270,22 @@ def generate_orders(
             oid = start_order_id + 1 + i
             cid = order_customer_ids[i]
             customer_created_at = customer_created[cid]
-            
+
             # Ensure the order isn't older than the customer's account
             max_days_ago = max(0, (now - customer_created_at).days)
             days_ago = min(int(random.expovariate(1 / MEAN_ORDER_AGE_DAYS)), max_days_ago)
-            
+
             order_date = now - timedelta(
                 days=days_ago, hours=random.randint(0, 23), minutes=random.randint(0, 59)
             )
             if order_date < customer_created_at:
                 order_date = customer_created_at + timedelta(minutes=random.randint(1, 120))
-                
+
             # CRITICAL FIX: Ensure the artificially shifted order_date never exceeds now()
             # This prevents orders from getting timestamps in the future and breaking the CDC simulator's watermark.
             if order_date > now:
                 order_date = now
-                
+
             status = random.choices(ORDER_STATUSES, weights=ORDER_STATUS_WEIGHTS)[0]
             # Attribution draws from 1..N_CAMPAIGNS — the shared constant in
             # generators/domain.py — because campaign_generator emits exactly
@@ -310,8 +313,15 @@ def generate_orders(
     written = bulk_copy(
         conn,
         "orders",
-        ["order_id", "customer_id", "order_date", "status", "created_at", "updated_at",
-         "campaign_id"],
+        [
+            "order_id",
+            "customer_id",
+            "order_date",
+            "status",
+            "created_at",
+            "updated_at",
+            "campaign_id",
+        ],
         order_rows(),
         commit_every_batch=True,
     )
@@ -329,18 +339,20 @@ def generate_orders(
                 # Small drift vs. current catalog price -> price-at-purchase,
                 # not a live join; real-world prices move over time.
                 unit_price = round(product_prices[product_id] * random.uniform(0.9, 1.05), 2)
-                
+
                 # Inject deliberate noise to test the Quarantine Layer
                 final_product_id = product_id
                 if random.random() < GEN_MESSINESS_RATE:
-                    noise_type = random.choice(["negative_price", "negative_quantity", "null_product"])
+                    noise_type = random.choice(
+                        ["negative_price", "negative_quantity", "null_product"]
+                    )
                     if noise_type == "negative_price":
                         unit_price = -unit_price
                     elif noise_type == "negative_quantity":
                         quantity = -quantity
                     elif noise_type == "null_product":
                         final_product_id = None
-                        
+
                 yield (item_id, oid, final_product_id, quantity, unit_price)
 
     written_items = bulk_copy(
@@ -378,14 +390,14 @@ def main() -> None:
         max_product_id = _get_max_id(conn, "product_id", "products")
         max_order_id = _get_max_id(conn, "order_id", "orders")
         max_item_id = _get_max_id(conn, "order_item_id", "order_items")
-        
+
         product_prices = {}
         if max_product_id > 0:
             with conn.cursor() as cur:
                 cur.execute("SELECT product_id, unit_price FROM products")
                 for pid, price in cur.fetchall():
                     product_prices[pid] = float(price)
-                    
+
         customer_created: dict[int, datetime] = {}
         if max_customer_id > 0:
             with conn.cursor() as cur:
@@ -393,9 +405,11 @@ def main() -> None:
                 for cid, created_at in cur.fetchall():
                     customer_created[cid] = created_at
 
-        new_max_customer_id, new_customer_created = generate_customers(conn, N_CUSTOMERS, max_customer_id, faker)
+        new_max_customer_id, new_customer_created = generate_customers(
+            conn, N_CUSTOMERS, max_customer_id, faker
+        )
         customer_created.update(new_customer_created)
-        
+
         new_product_prices = generate_products(conn, N_PRODUCTS, max_product_id, faker)
         product_prices.update(new_product_prices)
         # Commit customers + products BEFORE order generation begins: orders
@@ -405,7 +419,13 @@ def main() -> None:
         conn.commit()
 
         generate_orders(
-            conn, TOTAL_ORDERS, new_max_customer_id, max_order_id, max_item_id, product_prices, customer_created
+            conn,
+            TOTAL_ORDERS,
+            new_max_customer_id,
+            max_order_id,
+            max_item_id,
+            product_prices,
+            customer_created,
         )
         conn.commit()
     except Exception:

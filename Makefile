@@ -1,8 +1,13 @@
-.PHONY: up down batch batch-stop run-batch seed stream-clickstream kafka-topics stream-job stream-cdc test test-spark test-iceberg coverage lint fmt logs ps clean query-dead-letters schedule stream-live-orders
+.PHONY: up down batch batch-stop run-batch seed stream-clickstream kafka-topics stream-job stream-cdc test test-spark test-iceberg test-minio coverage lint fmt logs ps clean query-dead-letters schedule stream-live-orders
 
 # Make exports this to every recipe's shell on all platforms, so
 # `python -m dataone....` resolves without an editable install.
 export PYTHONPATH=src
+
+# Overridable, e.g. `make run-batch BATCH_EXECUTOR_MEMORY=2000m`
+BATCH_CONTAINER ?= dataone-spark-worker-batch
+BATCH_DRIVER_MEMORY ?= 512m
+BATCH_EXECUTOR_MEMORY ?= 4000m
 
 up:
 	docker compose --profile core up -d
@@ -19,11 +24,11 @@ batch-stop:
 
 run-batch:
 	docker compose --profile core --profile batch up -d spark-worker-batch
-	docker exec dataone-spark-worker-batch /opt/spark/bin/spark-submit \
+	docker exec $(BATCH_CONTAINER) /opt/spark/bin/spark-submit \
 	  --master spark://spark-master:7077 \
 	  --deploy-mode client \
-	  --driver-memory 512m \
-	  --executor-memory 4000m \
+	  --driver-memory $(BATCH_DRIVER_MEMORY) \
+	  --executor-memory $(BATCH_EXECUTOR_MEMORY) \
 	  --total-executor-cores 1 \
 	  /opt/dataone/src/dataone/batch/bronze_to_silver.py \
 	  $(if $(START_DATE),--start $(START_DATE) --end $(END_DATE),) \
@@ -71,6 +76,10 @@ test-spark:
 test-iceberg:
 	pytest -v -m iceberg
 
+# Needs MinIO running and MINIO_TEST_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY set.
+test-minio:
+	pytest -v -m minio
+
 coverage:
 	pytest --cov=dataone --cov-report=term-missing
 
@@ -88,8 +97,14 @@ logs:
 ps:
 	docker compose ps
 
+# Destroys ALL volumes (Postgres, Mongo, ClickHouse, the Iceberg lakehouse...).
+# Asks first; skip the prompt with `make clean FORCE=1`.
 clean:
+	@if [ -z "$(FORCE)" ]; then \
+	  printf "This deletes ALL dataone docker volumes (databases + lakehouse). Continue? [y/N] "; \
+	  read ans; [ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Aborted."; exit 1; }; \
+	fi
 	docker compose --profile core --profile batch down -v
 
 query-dead-letters:
-	docker compose exec spark-worker-streaming /opt/spark/bin/spark-submit --master "local[*]" /opt/dataone/src/query_dlq.py
+	docker compose exec spark-worker-streaming /opt/spark/bin/spark-submit --master "local[*]" /opt/dataone/src/dataone/utils/query_dlq.py

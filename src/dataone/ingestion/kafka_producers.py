@@ -6,6 +6,7 @@ Sends are batched (linger_ms / batch_size) rather than flushed per message —
 callers that need delivery guarantees at a boundary (end of a poll cycle,
 shutdown) call flush_producer() once per batch instead.
 """
+
 from __future__ import annotations
 
 import atexit
@@ -46,8 +47,8 @@ def get_producer() -> KafkaProducer:
 def _on_send_error(exc: BaseException) -> None:
     """Errback for the async send future.
 
-    Without it, delivery failures on the background I/O thread would vanish 
-    silently now that we no longer flush (and therefore no longer surface errors) 
+    Without it, delivery failures on the background I/O thread would vanish
+    silently now that we no longer flush (and therefore no longer surface errors)
     on every send.
 
     Args:
@@ -77,8 +78,8 @@ def send(topic: str, value: dict | bytes, key: str | None = None) -> None:
 def flush_producer() -> None:
     """Flushes pending messages if a producer exists.
 
-    Callers invoke this once per batch / at shutdown rather than per message. 
-    Guarded on the lru_cache so a flush never *creates* a producer (e.g., in 
+    Callers invoke this once per batch / at shutdown rather than per message.
+    Guarded on the lru_cache so a flush never *creates* a producer (e.g., in
     unit tests that stub out send()).
     """
     if get_producer.cache_info().currsize:

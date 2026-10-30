@@ -3,6 +3,7 @@ Destructive dev utility: drop the gold marts so the next batch run rebuilds
 them from scratch. Guarded behind an explicit --yes flag because DROP TABLE
 on the lakehouse is irreversible.
 """
+
 from __future__ import annotations
 
 import argparse
