@@ -10,7 +10,9 @@
 ![PostgreSQL](https://img.shields.io/badge/postgresql-4169e1?style=for-the-badge&logo=postgresql&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB-%234ea94b.svg?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Grafana](https://img.shields.io/badge/grafana-%23F46800.svg?style=for-the-badge&logo=grafana&logoColor=white)
-![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-E65
+https://github.com/user-attachments/assets/312b0566-4abe-4902-9a0d-dd2f891c1bf2
+C?style=for-the-badge&logo=prometheus&logoColor=white)
 ![Prefect](https://img.shields.io/badge/Prefect-ffffff?style=for-the-badge&logo=prefect&logoColor=070E82)
 ![Marquez](https://img.shields.io/badge/Marquez-000000?style=for-the-badge&logoColor=white)
 ![OpenLineage](https://img.shields.io/badge/OpenLineage-272A30?style=for-the-badge&logoColor=white)
@@ -20,11 +22,10 @@ An end-to-end modern data engineering project demonstrating Change Data Capture 
 
 ## 🎬 DataOne in 22 Seconds
 
-<!--
-  To show the inline player: edit this file on github.com, drag brag-github.mp4 into the editor,
-  and replace the image line below with the https://github.com/user-attachments/assets/... URL it inserts.
--->
-![DataOne in 22 seconds](docs/images/dataone-video-poster.jpg)
+
+https://github.com/user-attachments/assets/2dbc1e03-bed4-4e1f-837e-7bdcd6a867c0
+
+
 
 ---
 
