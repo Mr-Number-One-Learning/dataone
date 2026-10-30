@@ -16,14 +16,16 @@ Verified while planning:
 
 ## PR sequence (each is independent unless noted)
 
-### PR 1: CI and pre-commit
+### PR 1: CI and pre-commit (implemented)
+As built, CI installs `requirements-dev.lock` plus `pip install -e . --no-deps`.
 - Add `.github/workflows/ci.yml`:
   - Job `lint-test`: Python 3.10/3.11, install `requirements*.txt` plus `pip install -e .`, then `make lint` and `make test`.
   - Job `spark-tests` (nightly cron plus manual dispatch): JDK 17, `make test-spark` and `make test-iceberg`.
 - Add `.pre-commit-config.yaml` with ruff and black, reusing the existing `[tool.ruff]` and `[tool.black]` config in `pyproject.toml`.
 - Reuse the Makefile `lint`/`test` targets so CI and local runs match.
 
-### PR 2: Secrets and credentials
+### PR 2: Secrets and credentials (implemented)
+As built, every port except the NiFi reviews listener (`NIFI_REVIEWS_LISTEN_PORT`) is bound to `127.0.0.1`.
 - `config.py`: replace the `os.getenv("X_PASSWORD", "changeme")` fallbacks (lines 128, 141, 164, 172) with a small `_require_env(name)` helper that raises a clear error when unset. Keep `.env.example` as the documented source of defaults. Check `tests/` for tests that rely on the fallbacks and set env vars in `conftest.py`.
 - `docker-compose.yml`: use `${MARQUEZ_PASSWORD:?set MARQUEZ_PASSWORD in .env}` at lines 416 and 437.
 - `src/nifi_flows/Reviews_API_Ingestion.json`: replace the inline Mongo URI password with a NiFi parameter, or sanitize the committed value to a placeholder and document the post-import step in the NiFi guide.
@@ -31,7 +33,7 @@ Verified while planning:
 - Bind published ports to `127.0.0.1:` in `docker-compose.yml`.
 - Rotate the real values in the local `.env`, which is currently identical to `.env.example`.
 
-### PR 3: Dependency consolidation
+### PR 3: Dependency consolidation (implemented)
 - Move runtime dependencies from `requirements.txt` into `[project.dependencies]` in `pyproject.toml`. Add `[project.optional-dependencies] dev` from `requirements-dev.txt`.
 - Compare against `infra/docker/spark/requirements-spark.txt`, then either generate it from the same source or keep it as an explicit subset with a comment.
 - Generate a lockfile with `uv pip compile` (or `pip-tools`), commit it, and install from it in CI and the Spark Dockerfile.
@@ -39,7 +41,8 @@ Verified while planning:
 - Pin `vchernikh/tabix` and `prefecthq/prefect` to explicit tags.
 - Keep `requirements*.txt` as thin generated files, or delete them and update README, Makefile and CONTRIBUTING.
 
-### PR 4: Repo hygiene
+### PR 4: Repo hygiene (implemented)
+As built, the DLQ helper lives at `src/dataone/utils/query_dlq.py` (run with `make query-dead-letters`), and `scripts/run_batch_job.sh` delegates to `make run-batch`.
 - `.gitignore`:
   - Add `data/lakehouse/**` (keeping `.gitkeep`), `.hadoop/` and `jdk.zip`.
   - Fix the `*.docs` typo.
@@ -53,12 +56,13 @@ Verified while planning:
 - Make `scripts/run_batch_job.sh` call `make run-batch`, or delete it.
 - Prefect tasks: replace `log_prints=True` reliance with structlog calls.
 
-### PR 5: Metadata and quality verification
+### PR 5: Metadata and quality verification (implemented)
 - Add a test (or CI step) that runs `scripts/generate_metadata.py` into a temp dir and diffs against committed `metadata/`.
 - Generate the missing `metadata/ownership/silver.campaigns.json` through that script.
 - Optional, later: freshness and row-volume checks in `quality/validators.py`, surfaced in the existing `gold.quality_gate_summary`. Evaluating Great Expectations or Soda is a separate decision.
 
-### PR 6: Refactor bronze_to_silver.py (last, after CI and tests are in place)
+### PR 6: Refactor bronze_to_silver.py (implemented)
+As built, the split is `gold_marts.py` (Gold builders) and `clickhouse_sync.py` (ClickHouse load); Bronze ingest and Silver logic stay in `bronze_to_silver.py`, which keeps the `--stage` entrypoint. The per-silver-table modules suggested in step 3 were not created.
 1. Verify the duplicated code paths and add characterization tests under the `spark`/`iceberg` markers before moving anything.
 2. Narrow the `except Exception` blocks at 502 (sentiment), 983, 1063, 1167, 1266, 1295 and 1483 to specific exceptions, or log and re-raise. Lines 901, 937 and 943 already re-raise or are guarded cleanup, so leave them.
 3. Split into modules under `src/dataone/batch/` (for example `silver_orders.py`, `silver_reviews.py`, `silver_clickstream.py`, `gold.py`, `clickhouse_sync.py`) with one shared `write_overwrite_partitions` path. Keep `bronze_to_silver.py` as a thin orchestrator so `nightly_batch.py`, `backfill.py` and tests keep their imports.

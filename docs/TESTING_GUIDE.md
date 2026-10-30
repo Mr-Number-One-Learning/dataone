@@ -9,7 +9,7 @@ Tests are categorized based on their dependency footprint. We avoid relying stri
 ### Test Markers
 - **(No marker)**: Pure Python tests. These run instantly and mock out Spark interactions (e.g., CDC logic, orchestration scheduling logic).
 - **`@pytest.mark.spark`**: Requires a local `SparkSession` initialized in `conftest.py`. Used for verifying DataFrame transformations and Quality Gate behaviors without writing to disk.
-- **`@pytest.mark.iceberg`**: Requires a full `SparkSession` armed with the Iceberg SQL Extensions and PostgreSQL JDBC catalog. Downloads Maven JARs on first run. Validates Iceberg-specific DDL syntax, partition logic, and SCD Type 2 `MERGE INTO` operations.
+- **`@pytest.mark.iceberg`**: Requires a full `SparkSession` armed with the Iceberg SQL Extensions and a throwaway local Hadoop catalog in a pytest `tmp_path` (same SQL surface as the production Postgres JDBC catalog, no database needed). Downloads Maven JARs on first run. Validates Iceberg-specific DDL syntax, partition logic, and SCD Type 2 `MERGE INTO` operations.
 - **`@pytest.mark.minio`**: Opt-in. Writes and reads an Iceberg table through `S3FileIO` against a real MinIO; skipped unless `MINIO_TEST_ENDPOINT`, `MINIO_ACCESS_KEY` and `MINIO_SECRET_KEY` are set. Run with `make test-minio`.
 
 The default `pytest` run (`make test`) excludes the `spark`, `iceberg` and `minio` markers (`addopts` in `pyproject.toml`). CI runs the default suite on every pull request and the Spark and Iceberg suites nightly.
@@ -25,11 +25,11 @@ A few tests worth knowing about:
 
 Execute the testing suites using the `make` shortcuts defined in the project root:
 
-**Run all standard and Spark tests (Fastest)**:
+**Run the default offline suite (fastest)**:
 ```bash
 make test
 ```
-*(Runs pure python tests, skipping Iceberg by default if unconfigured)*
+*(Runs the pure Python tests; the `spark`, `iceberg` and `minio` markers are always excluded by `addopts` in `pyproject.toml`)*
 
 **Run specifically Spark DataFrame tests**:
 ```bash
@@ -80,13 +80,13 @@ The `run_quality_gate` function ensures that bad data is trapped and routed, nev
    - **Passed Records**: Stripped of internal flags and returned to the pipeline for writing to the Silver layer.
    - **Quarantined Records**: Retain the error flags and are appended permanently to the `quarantine` layer (e.g., `quarantine.fact_order_items`) for data engineering audit and reprocessing.
 
+The rules come from `metadata/quality/<dataset>.json` (loaded by the `MetadataRegistry`) when the caller passes `dataset_name`; explicit `required_columns` / `column_bounds` arguments override them.
+
 *Example Validation from `bronze_to_silver.py`:*
 ```python
-quality_result = run_quality_gate(
-    fact_order_items_df,
-    required_columns=["order_id", "customer_id", "product_id"],
-    column_bounds={"unit_price": (0, None), "quantity": (1, None)},
-)
+# metadata/quality/gold.fact_order_items.json:
+#   required: order_id, customer_id, product_id; bounds: unit_price >= 0, quantity >= 1
+quality_result = run_quality_gate(fact_order_items_df, dataset_name="gold.fact_order_items")
 # Write quality_result.passed_df -> gold.fact_order_items
 # Write quality_result.quarantined_df -> quarantine.fact_order_items
 ```

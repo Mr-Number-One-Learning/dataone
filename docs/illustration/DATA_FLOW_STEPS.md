@@ -8,18 +8,18 @@ This document provides a strict, step-by-step linear trace of how data propagate
 
 - **Step 1: Origin & Ingestion:** 
   - **Origin:** Operational OLTP PostgreSQL database.
-  - **Trigger:** Interval-based polling orchestrated by Prefect (`cdc_poll.py` running every 5/30 seconds).
-  - **Extraction:** A Python simulator queries `updated_at` watermarks, serializes the row into JSON, wraps it in a unified envelope (`{table_name, op, pk, data_json, captured_at}`), and pushes it to the `orders-cdc` Kafka topic.
+  - **Trigger:** Interval-based polling orchestrated by Prefect (`cdc_poll.py` running every 5 seconds).
+  - **Extraction:** A Python simulator queries `updated_at` watermarks, serializes the row into JSON, wraps it in a unified envelope (`{table_name, op, pk_column, pk_value, data_json, captured_at}`), and pushes it to the `orders-cdc` Kafka topic.
 - **Step 2: Landing in Bronze (Raw):** 
   - **Landing Zone:** `bronze.orders_cdc`
-  - **Metadata:** PySpark Structured Streaming micro-batch appends `kafka_timestamp`, `kafka_offset`, and `processing_time`.
+  - **Metadata:** PySpark Structured Streaming appends the parsed envelope (including `captured_at`) every 30 seconds; malformed events go to `bronze.dead_letters`.
 - **Step 3: Processing into Silver (Cleaned):** 
   - **Cleaning:** The nightly batch job parses the JSON payload. `customers` and `orders` are split into separate paths.
   - **Deduplication:** A `ROW_NUMBER() OVER (PARTITION BY business_key ORDER BY captured_at DESC)` window function deduplicates rows.
   - **Validation:** Passes through the PySpark Quality Gate. Rows with null PKs are routed to `quarantine.orders`.
   - **Target:** `silver.orders` and `silver.customers`.
 - **Step 4: Integration & Joins:** 
-  - **Joins:** Joined at the Gold layer inside `bronze_to_silver.py`. `silver.orders` joins with `gold.dim_customer` (on `customer_id`), `gold.dim_product` (on `product_id`), and `gold.dim_date` (on `YYYYMMDD`).
+  - **Joins:** Joined at the Gold layer in `batch/gold_marts.py` (`build_fact_order_items`). `silver.orders` joins with `silver.order_items` and `silver.products`, then with `gold.dim_customer` (the SCD2 version valid at `order_date`); `date_key` (`YYYYMMDD`) links to `gold.dim_date`.
 - **Step 5: Consolidation into Gold (Analytics):** 
   - **Business Logic:** Surrogate keys are hashed. `silver.customers` undergoes a `MERGE INTO` operation to maintain SCD Type 2 history.
   - **Final Targets:** `gold.fact_order_items`, `gold.dim_customer`, and aggregates like `gold.daily_sales`.
@@ -39,7 +39,7 @@ This document provides a strict, step-by-step linear trace of how data propagate
   - **Cleaning:** The nightly batch job enforces the Quality Gate (ensuring `session_id` and `event_type` are not null).
   - **Target:** `silver.clickstream`
 - **Step 4: Integration & Joins:** 
-  - **Joins:** Joined at the Gold layer to connect behavioral data with transactional data. It joins against `gold.fact_order_items` on `customer_id` and `product_id` to evaluate conversion efficacy.
+  - **Joins:** None. The Gold conversion marts are aggregated from `silver.clickstream` alone (sessions and funnel events per day).
 - **Step 5: Consolidation into Gold (Analytics):** 
   - **Business Logic:** Evaluates full checkout funnels (PageView → AddToCart → CheckoutStart → Purchase).
   - **Final Targets:** `gold.conversion_rate` and `gold.funnel_conversion`.
@@ -49,9 +49,9 @@ This document provides a strict, step-by-step linear trace of how data propagate
 ## Source 3: Product Reviews
 
 - **Step 1: Origin & Ingestion:** 
-  - **Origin:** MongoDB document store.
-  - **Trigger:** Scheduled batch pull via Apache NiFi.
-  - **Extraction:** NiFi utilizes an HTTP ListenEndpoint and `PutMongo` processor, moving documents natively into a format ready for batch loading.
+  - **Origin:** The reviews generator POSTs each review to NiFi's plain-HTTP `ListenHTTP` endpoint (`/reviews`, port 9900).
+  - **Trigger:** Push, per review (or direct MongoDB writes when `GEN_REVIEWS_INGEST_MODE=direct`).
+  - **Extraction:** NiFi's `PutMongo` processor lands the documents in MongoDB; the nightly `ingest_bronze` stage reads new reviews from MongoDB.
 - **Step 2: Landing in Bronze (Raw):** 
   - **Landing Zone:** `bronze.reviews`
   - **Metadata:** Schema is strictly typed, but accounts for missing fields inherent in NoSQL datasets.
@@ -60,7 +60,7 @@ This document provides a strict, step-by-step linear trace of how data propagate
   - **Enrichment:** NLP processing derives a `sentiment_score` (-1.0 to 1.0 polarity) from the review body text.
   - **Target:** `silver.reviews`
 - **Step 4: Integration & Joins:** 
-  - **Joins:** Joined at the Gold layer with product and order data on `product_id`.
+  - **Joins:** Joined at the Gold layer with `silver.products` on `product_id`.
 - **Step 5: Consolidation into Gold (Analytics):** 
   - **Business Logic:** Averages product ratings and sentiment scores, grouping by product category to derive brand health.
   - **Final Targets:** `gold.product_sentiment`.
@@ -76,7 +76,8 @@ This document provides a strict, step-by-step linear trace of how data propagate
 - **Step 2: Landing in Bronze (Raw):** 
   - **Landing Zone:** `bronze.campaigns`
 - **Step 3: Processing into Silver (Cleaned):** 
-  - **Bypass Logic:** Campaign data skips the Silver curation layer completely. It is considered clean reference data curated by NiFi at the edge.
+  - **Cleaning:** The quality gate checks required fields and non-negative budget/spend/clicks/conversions; passing rows go to `silver.campaigns`, failures to `quarantine.campaigns`.
+  - **Target:** `silver.campaigns`
 - **Step 4: Integration & Joins:** 
   - **Joins:** Joined directly into the Gold dimensional model. Fact records lookup their `campaign_id` to retrieve the associated surrogate key `sk_campaign_id`.
 - **Step 5: Consolidation into Gold (Analytics):** 

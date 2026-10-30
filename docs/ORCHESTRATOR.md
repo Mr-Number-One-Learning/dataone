@@ -19,27 +19,31 @@ Prefect runs via three dedicated services in the `core` profile of our `docker-c
 
 - `prefect-server`: The core API and UI server, available at `http://localhost:4200`.
 - `prefect-redis`: The messaging layer required by Prefect 3.x for event routing.
-- `prefect-worker`: The worker process. It shares the exact same Docker image as `spark-worker-batch` (`x-spark-image`) so that our flows have immediate access to `spark-submit`, PySpark, and all Iceberg JDBC jars without any dependency conflicts.
+- `prefect-worker`: A worker for the `dataone-process-pool` process work pool, built from the same Docker image as `spark-worker-batch` (`x-spark-image`). No deployment targets that pool today, so it is idle: the flows below are started with Prefect's `serve()` and run in the process that serves them (see *Execution & Usage*).
 
 ---
 
 ## The Flows
 
-The orchestration logic is located in `src/dataone/orchestration/`. We currently maintain two core flows:
+The orchestration logic is located in `src/dataone/orchestration/`. There are three flows: `nightly-batch` and `backfill` (both in `nightly_batch.py`) and `cdc-poll` (`cdc_poll.py`).
 
 ### 1. Nightly Batch Pipeline (`nightly_batch.py`)
 
 ![Prefect Nightly Batch](images/prefect_nightly_batch.png)
 
 - **Trigger:** Runs via a Cron schedule (`0 2 * * *` - 02:00 AM daily).
-- **Task:** Orchestrates the Medallion architecture batch job (`bronze_to_silver.py`).
-- **Features:** It includes task-level retry policies (`retries=3`) with exponential backoffs in case the Spark master is temporarily unreachable or experiences transient failures. It also accepts `start` and `end` parameters for backfills.
+- **Tasks:** Runs the four batch stages as separate Prefect tasks, in order: `run-ingest-bronze`, `run-standardize-silver`, `run-model-gold`, `run-clickhouse-sync`. Each task calls `make run-batch STAGE=<stage>` (one `spark-submit` per stage) and passes `PARENT_RUN_ID` / `PARENT_JOB_NAME` so the Spark job's OpenLineage events link back to the flow run. A final `publish-run-summary` task (in `finally`) publishes a Markdown summary of `_pipeline_runs` as a Prefect artifact.
+- **Retries:** Each stage task retries 3 times with fixed delays of 10 s, 30 s and 60 s, so a failed ClickHouse sync is retried without re-running ingest or Silver.
 
-### 2. CDC Simulator Poller (`cdc_poll.py`)
+### 2. Backfill (`nightly_batch.py`, `backfill(start, end)`)
+
+- **Trigger:** On demand. It takes `start` and `end` dates and runs the same four stage tasks with `START_DATE` / `END_DATE` set. `make schedule` does not serve it, so run it from Python (`from dataone.orchestration.nightly_batch import backfill; backfill("2026-07-01", "2026-07-05")`) or use the standalone CLI `python -m dataone.batch.backfill`.
+
+### 3. CDC Simulator Poller (`cdc_poll.py`)
 
 ![Prefect CDC Polling](images/perfect_cdc_polling.png)
 
-- **Trigger:** Runs on a 30-second interval schedule.
+- **Trigger:** Runs on a 5-second interval schedule (`cdc_poll.serve(name="cdc-poll", interval=5)`).
 - **Task:** Repeatedly executes the `poll_once` function on our PostgreSQL tables (`customers` and `orders`) to detect changes and emit events into Kafka.
 - **Features:** Provides high observability. If a specific poll cycle fails (e.g., due to a temporary DB lock), Prefect natively retries the task, and we can easily see exactly which interval failed rather than having a monolithic daemon crash silently.
 
@@ -47,7 +51,7 @@ The orchestration logic is located in `src/dataone/orchestration/`. We currently
 
 ## Execution & Usage
 
-Because Prefect runs inside Docker, the `make` targets on your host simply serve the flows natively. Make sure that your `.env` contains the correct `PREFECT_API_URL` (usually `http://localhost:4200/api`) so the local Python script can communicate with the Dockerized server.
+The Prefect server runs inside Docker, while the `make` targets below serve the flows from your machine with `serve()`: the process stays in the foreground, creates the deployment and its schedule on the server, and executes each run itself. Keep it running for the schedule to fire. Make sure that your `.env` contains the correct `PREFECT_API_URL` (usually `http://localhost:4200/api`) so the local Python script can communicate with the Dockerized server.
 
 **Starting the nightly scheduler:**
 ```bash

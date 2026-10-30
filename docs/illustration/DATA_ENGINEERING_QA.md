@@ -20,7 +20,7 @@ This companion document acts as a technical FAQ for onboarding engineers and add
 ### Edge Cases & Failure Modes
 
 **Q: How does the pipeline handle a schema evolution change from an upstream API/DB?**  
-**A:** For heavy operational data (CDC), we employ a Schema-on-Read approach in Bronze. The changing data is serialized as a JSON string (`data_json`) within a static envelope `{table_name, pk, data_json}`. If an upstream DBA adds a column to the Postgres `orders` table, the pipeline does not break. The new column simply rides along in the JSON payload until an engineer updates the PySpark batch job to parse it out into the Silver layer. Furthermore, Apache Iceberg supports native schema evolution without rewriting data files.
+**A:** For heavy operational data (CDC), we employ a Schema-on-Read approach in Bronze. The changing data is serialized as a JSON string (`data_json`) within a static envelope `{table_name, op, pk_column, pk_value, data_json, captured_at}`. If an upstream DBA adds a column to the Postgres `orders` table, the pipeline does not break. The new column simply rides along in the JSON payload until an engineer updates the PySpark batch job to parse it out into the Silver layer. Furthermore, Apache Iceberg supports native schema evolution without rewriting data files.
 
 **Q: What happens if duplicate data enters the Silver layer?**  
 **A:** Duplicates cannot logically persist in Silver. During the PySpark Bronze-to-Silver ETL, a deduplication window function is applied: `ROW_NUMBER() OVER (PARTITION BY business_key ORDER BY captured_at DESC)`. This guarantees that only the single latest state of an entity makes it into the curated Silver table, regardless of how many duplicate micro-batch events arrived in Bronze.

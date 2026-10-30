@@ -26,6 +26,7 @@ sequenceDiagram
         Make->>Spark: spark-submit
         Spark->>OL: START event (parent run facet)
         alt ingest_bronze
+            Spark->>Spark: read NiFi-staged campaign files
             Spark->>PG: read products, order_items
             Spark->>Mongo: read reviews
             Spark->>Ice: write bronze tables
@@ -87,6 +88,8 @@ sequenceDiagram
     SS->>CH: write aggregate per micro-batch (trigger 1 min)
     SS->>SS: anomaly detector on clickstream
     SS->>K: publish to anomaly alerts topic
+    CH->>K: Kafka-engine table consumes orders CDC
+    CH->>CH: materialized views (orders/min, revenue estimate, status counts)
     G->>CH: query live dashboards
 ```
 
@@ -95,14 +98,13 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant API as Reviews REST API
-    participant NiFi as Apache NiFi
+    participant Gen as Reviews generator
+    participant NiFi as Apache NiFi (ListenHTTP)
     participant Mongo as MongoDB
     participant Spark as Spark ingest_bronze
     participant Ice as Iceberg bronze
 
-    NiFi->>API: fetch reviews
-    API-->>NiFi: JSON payload
+    Gen->>NiFi: HTTP POST /reviews (JSON)
     NiFi->>Mongo: PutMongo (insert)
     Note over NiFi,Mongo: replays can create duplicates, removed later by review_id dedupe in silver
     Spark->>Mongo: read reviews (nightly)
@@ -120,7 +122,7 @@ sequenceDiagram
     participant Spark as Spark job
     participant PG as Postgres _pipeline_runs
 
-    Op->>Flow: run with start, end
+    Op->>Flow: call backfill(start, end) (not served by make schedule)
     loop ingest_bronze, standardize_silver, model_gold, sync_clickhouse
         Flow->>Make: env START_DATE, END_DATE, STAGE
         Make->>Spark: spark-submit for the date window

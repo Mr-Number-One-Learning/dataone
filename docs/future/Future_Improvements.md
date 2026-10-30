@@ -21,12 +21,12 @@ Currently, all business marts (e.g., `daily_sales`, `roas`, `funnel_conversion`)
 ---
 
 ## 2. Real-Time Streaming Marts (Lambda Architecture) ✅ IMPLEMENTED
-The project already implements a partial Lambda Architecture: the `live_activity` table in ClickHouse (fed by the Structured Streaming job) provides real-time operational visibility for sessions, events, and checkout completions. However, the CDC stream (orders, customers) is ingested into Bronze in real-time but its business metrics are only aggregated during the nightly batch run.
+Originally only the `live_activity` table in ClickHouse (fed by the Structured Streaming job) gave real-time visibility, for sessions, events, and checkout completions; order metrics waited for the nightly batch.
 
-**The Improvement:**
-- Connect ClickHouse *directly* to the Kafka CDC topic using the `Kafka` table engine.
-- Create ClickHouse Materialized Views to compute live, real-time operational dashboards (e.g., tracking orders placed in the last 5 minutes, real-time revenue).
+**What was built:**
+- ClickHouse reads the Kafka CDC topic *directly* through a `Kafka`-engine table (`_kafka_orders_cdc`).
+- Materialized views (`mv_orders_cdc_parser`, `mv_orders_per_minute`, `mv_revenue_estimate`, `mv_order_status_counts`) feed the Real-Time Operations dashboard: orders in the last 5 minutes, order velocity, revenue estimate, status breakdown.
 
-**Why:** This would extend the existing streaming capability from clickstream-only metrics to full order-level visibility, completing the **Lambda Architecture** — rigorous batch historical layer (Iceberg) combined with a fast, real-time streaming layer for immediate operational visibility.
+**Why:** This extends the existing streaming capability from clickstream-only metrics to full order-level visibility, completing the **Lambda Architecture** — rigorous batch historical layer (Iceberg) combined with a fast, real-time streaming layer for immediate operational visibility.
 
 

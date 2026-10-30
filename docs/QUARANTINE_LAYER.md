@@ -10,7 +10,7 @@ Instead of silently dropping bad data or crashing the entire pipeline when an up
 ## How It Works
 
 ### 1. The Quality Gate (`src/dataone/quality/validators.py`)
-As data moves from Bronze (raw) into Silver or Gold, it passes through the `run_quality_gate()` function. This function applies a strict schema contract to the incoming DataFrame:
+As data moves from Bronze (raw) into Silver or Gold, it passes through the `run_quality_gate()` function. This function applies the rules declared for the dataset in `metadata/quality/<dataset>.json` to the incoming DataFrame:
 - **Null Checks:** Are primary keys and foreign keys present?
 - **Range Bounds:** Are prices ≥ 0? Are review ratings between 1 and 5?
 
@@ -33,7 +33,7 @@ Currently, the quality gate covers eight core datasets:
 | `campaigns` | `campaign_id`, `name`, `start_date`, `end_date` must not be null. `budget`, `spend`, `clicks`, `conversions` ≥ 0. | `quarantine.campaigns` |
 | `customers` | `customer_id` must not be null. | `quarantine.customers` |
 | `orders` | `order_id`, `customer_id`, `order_date` must not be null. | `quarantine.orders` |
-| `products` | `product_id`, `category`, `name` must not be null. | `quarantine.products` |
+| `products` | `product_id`, `sku` must not be null. `unit_price` ≥ 0. | `quarantine.products` |
 | `clickstream` | `session_id`, `event_type`, `ts` must not be null. `event_type` must be valid. | `quarantine.clickstream` |
 | `order_items` | `order_item_id`, `order_id` must not be null. `quantity` ≥ 1, `unit_price` ≥ 0. | `quarantine.order_items` |
 | `fact_order_items` | `order_id`, `customer_id`, `product_id` must not be null. `unit_price` ≥ 0, `quantity` ≥ 1. | `quarantine.fact_order_items` |
