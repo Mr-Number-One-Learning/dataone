@@ -1,4 +1,4 @@
-.PHONY: up down batch batch-stop run-batch seed stream-clickstream kafka-topics stream-job stream-cdc test test-spark test-iceberg coverage lint fmt logs ps clean query-dead-letters schedule stream-live-orders
+.PHONY: up down batch batch-stop run-batch seed stream-clickstream kafka-topics stream-job stream-cdc test test-spark test-iceberg test-minio coverage lint fmt logs ps clean query-dead-letters schedule stream-live-orders
 
 # Make exports this to every recipe's shell on all platforms, so
 # `python -m dataone....` resolves without an editable install.
@@ -75,6 +75,10 @@ test-spark:
 
 test-iceberg:
 	pytest -v -m iceberg
+
+# Needs MinIO running and MINIO_TEST_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY set.
+test-minio:
+	pytest -v -m minio
 
 coverage:
 	pytest --cov=dataone --cov-report=term-missing

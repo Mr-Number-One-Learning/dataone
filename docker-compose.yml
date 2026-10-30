@@ -21,6 +21,7 @@ volumes:
   nifi-data:
   nifi-conf:
   lakehouse-data:
+  minio-data:
   prometheus-data:
   grafana-data:
   marquez-data:
@@ -83,6 +84,67 @@ services:
     command: >
       sh -c "mkdir -p /data/lakehouse/staging/campaigns &&
              chmod -R 777 /data/lakehouse"
+
+  # S3-compatible object storage holding the Iceberg warehouse (data + metadata
+  # files). Spark reaches it through Iceberg's S3FileIO. The lakehouse-data volume
+  # now only carries streaming checkpoints and NiFi's campaign staging files.
+  # Image tags come from .env (MINIO_IMAGE / MINIO_MC_IMAGE) so they can be pinned
+  # to a release you have verified.
+  minio:
+    image: ${MINIO_IMAGE:?set MINIO_IMAGE in .env (see .env.example)}
+    profiles: [ "core" ]
+    container_name: dataone-minio
+    networks: [ dataone-net ]
+    command: server /data --console-address ":9001"
+    ports:
+      - "127.0.0.1:9100:9000" # S3 API (host 9000 is already ClickHouse's native port)
+      - "127.0.0.1:9001:9001" # web console
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}"
+      # Lets Prometheus scrape /minio/v2/metrics/cluster without a bearer token.
+      MINIO_PROMETHEUS_AUTH_TYPE: "public"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    mem_limit: "512m"
+    cpus: "0.5"
+
+  # One-shot and idempotent: creates the bucket and a least-privilege application
+  # user (so the Spark jobs never use the MinIO root credentials), then exits.
+  minio-init:
+    image: ${MINIO_MC_IMAGE:?set MINIO_MC_IMAGE in .env (see .env.example)}
+    profiles: [ "core" ]
+    container_name: dataone-minio-init
+    networks: [ dataone-net ]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+      MINIO_ACCESS_KEY: "${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env}"
+      MINIO_SECRET_KEY: "${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-lakehouse}"
+    entrypoint: [ "/bin/sh", "-c" ]
+    command:
+      - |
+        set -eu
+        POLICY=dataone-lakehouse
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$$MINIO_BUCKET"
+        cat > /tmp/policy.json <<EOF
+        {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:*"],"Resource":["arn:aws:s3:::$$MINIO_BUCKET","arn:aws:s3:::$$MINIO_BUCKET/*"]}]}
+        EOF
+        mc admin policy info local "$$POLICY" >/dev/null 2>&1 || mc admin policy create local "$$POLICY" /tmp/policy.json
+        mc admin user info local "$$MINIO_ACCESS_KEY" >/dev/null 2>&1 || mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY"
+        mc admin user info local "$$MINIO_ACCESS_KEY" | grep -q "$$POLICY" || mc admin policy attach local "$$POLICY" --user "$$MINIO_ACCESS_KEY"
+        echo "minio-init: bucket $$MINIO_BUCKET and user $$MINIO_ACCESS_KEY ready"
 
   nifi:
     image: apache/nifi:1.27.0
@@ -278,6 +340,8 @@ services:
         condition: service_healthy
       init-lakehouse:
         condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
     command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "${SPARK_MASTER_URL}" ]
     environment:
       # Kept slightly under mem_limit (1536m) so the JVM heap isn't fighting
@@ -301,6 +365,8 @@ services:
       spark-master:
         condition: service_started
       init-lakehouse:
+        condition: service_completed_successfully
+      minio-init:
         condition: service_completed_successfully
     command: [ "/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "${SPARK_MASTER_URL}" ]
     environment:

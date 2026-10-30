@@ -146,7 +146,7 @@ For more detailed information, please refer to the specific documentation guides
 ├── pyproject.toml          # Project configuration, dependencies, and lint settings
 ├── metadata/               # Dynamic Metadata Layer (datasets, contracts, lineage, quality, ownership JSONs)
 ├── data/
-│   ├── lakehouse/          # Iceberg warehouse directory (mounted to Spark containers)
+│   ├── lakehouse/          # Local volume mount point: streaming checkpoints + NiFi staging (the Iceberg warehouse itself is in MinIO)
 │   └── raw/                # Local data generation outputs
 ├── docs/                   # Extended project documentation, architecture, & runbooks
 ├── infra/

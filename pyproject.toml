@@ -70,8 +70,9 @@ testpaths = ["tests"]
 markers = [
     "spark: needs a real local SparkSession (Java required) — see tests/conftest.py",
     "iceberg: needs a local SparkSession with a real Iceberg catalog (Java + network on first run to fetch the Iceberg jar) — see tests/conftest.py",
+    "minio: needs Java plus a running MinIO (docker compose --profile core up -d minio minio-init) — see tests/test_minio_integration.py",
 ]
-# Default run excludes both — neither is available in every dev environment,
+# Default run excludes all three — none is available in every dev environment,
 # and the Iceberg one needs network. `make test-spark` / `make test-iceberg`
 # or `pytest -m spark` / `pytest -m iceberg` override this explicitly.
-addopts = "-m \"not spark and not iceberg\""
+addopts = "-m \"not spark and not iceberg and not minio\""

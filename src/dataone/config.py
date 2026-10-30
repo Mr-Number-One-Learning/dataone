@@ -217,9 +217,39 @@ class NiFiConfig:
 
 
 @dataclass(frozen=True)
+class MinioConfig:
+    """S3-compatible object storage for the Iceberg warehouse.
+
+    The access key / secret are read lazily (properties) because they are only
+    needed when the warehouse actually lives on MinIO; a local-filesystem setup
+    (tests, a bare checkout) should not have to define them.
+    """
+
+    endpoint: str = os.getenv("MINIO_ENDPOINT", "http://minio:9000")
+    bucket: str = os.getenv("MINIO_BUCKET", "lakehouse")
+    region: str = os.getenv("MINIO_REGION", "us-east-1")
+
+    @property
+    def access_key(self) -> str:
+        return _require_env("MINIO_ACCESS_KEY")
+
+    @property
+    def secret_key(self) -> str:
+        return _require_env("MINIO_SECRET_KEY")
+
+
+@dataclass(frozen=True)
 class IcebergConfig:
+    # Where checkpoints / NiFi staging files live on the shared local volume.
     warehouse_path: str = os.getenv("ICEBERG_WAREHOUSE_PATH", "/data/lakehouse")
+    # Iceberg warehouse location. Set ICEBERG_WAREHOUSE=s3://<bucket>/<prefix> to
+    # use MinIO/S3; unset, it falls back to the local warehouse_path (file://).
+    warehouse: str = os.getenv("ICEBERG_WAREHOUSE") or f"file://{warehouse_path}"
     catalog_name: str = os.getenv("ICEBERG_CATALOG_NAME", "dataone_catalog")
+
+    @property
+    def uses_object_storage(self) -> bool:
+        return self.warehouse.startswith(("s3://", "s3a://"))
 
 
 postgres = PostgresConfig()
@@ -228,3 +258,4 @@ kafka = KafkaConfig()
 clickhouse = ClickHouseConfig()
 nifi = NiFiConfig()
 iceberg = IcebergConfig()
+minio = MinioConfig()

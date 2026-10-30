@@ -64,27 +64,20 @@ Verified while planning:
 3. Split into modules under `src/dataone/batch/` (for example `silver_orders.py`, `silver_reviews.py`, `silver_clickstream.py`, `gold.py`, `clickhouse_sync.py`) with one shared `write_overwrite_partitions` path. Keep `bronze_to_silver.py` as a thin orchestrator so `nightly_batch.py`, `backfill.py` and tests keep their imports.
 4. Do it in several commits, one module extracted per commit.
 
-### PR 7: MinIO object storage for the Iceberg warehouse
-Today the warehouse is the local Docker volume `lakehouse-data` mounted at `/data/lakehouse` (`docker-compose.yml`), addressed as `file://` + `ICEBERG_WAREHOUSE_PATH` (`config.py:185`, `utils/iceberg_helpers.py:49`). It is single-host and `make clean` deletes it. Move it to S3-compatible storage with MinIO.
+### PR 7: MinIO object storage for the Iceberg warehouse (implemented)
+Before: the warehouse was the local Docker volume `lakehouse-data` at `/data/lakehouse`, addressed as `file://` + `ICEBERG_WAREHOUSE_PATH`. It was single-host and `make clean` deleted it. Now it lives in MinIO. Depends on PR 2 (required secrets) and PR 3 (pinned deps).
 
-Do this after PR 2 (secrets) and PR 3 (dependencies), so MinIO credentials are required env vars and the S3 jars are pinned.
+What was built, and where it differs from the first draft of this plan:
+- **S3FileIO instead of Hadoop S3A.** Iceberg's native `S3FileIO` (`iceberg-aws-bundle-1.9.1.jar` added to `infra/docker/spark/Dockerfile`) is a single jar and avoids matching `hadoop-aws` / AWS SDK versions to Spark 3.5.1.
+- **`config.py`:** new `MinioConfig` (credentials read lazily via `_require_env`) and `IcebergConfig.warehouse` (`ICEBERG_WAREHOUSE`, falling back to the local `file://` path so tests and bare checkouts keep working).
+- **`utils/iceberg_helpers.py`:** `spark_catalog_conf()` adds `io-impl`, endpoint, path-style access, credentials and region when the warehouse is `s3://`.
+- **`docker-compose.yml`:** `minio` (healthcheck, `minio-data` volume, ports bound to 127.0.0.1, S3 API on host port 9100 because 9000 is ClickHouse's) and an idempotent `minio-init` that creates the bucket and a bucket-scoped app user. Spark workers depend on `minio-init`. Image tags come from required `.env` values (`MINIO_IMAGE`, `MINIO_MC_IMAGE`).
+- **Prometheus:** a `minio` scrape job (`MINIO_PROMETHEUS_AUTH_TYPE=public`).
+- **Tests:** unit tests for the S3 catalog conf; an opt-in `minio` marker test (`make test-minio`).
+- **Not moved, deliberately:** streaming checkpoints (`structured_streaming_job.py` `CHECKPOINT_BASE`) and NiFi's campaign staging directory stay on the `lakehouse-data` volume. Checkpoints would need the Hadoop S3A jars, and staging is written by NiFi to a local path, so moving either is a separate change.
+- **Migration:** none. Iceberg metadata embeds absolute `file://` paths, so re-seed and re-run, or unset `ICEBERG_WAREHOUSE` to stay local.
 
-1. **Compose:** add a `minio` service (pinned image tag, healthcheck, named volume `minio-data`, API on `127.0.0.1:9000`, console on `127.0.0.1:9001`) and a one-shot `minio-init` service using `mc` to create the `lakehouse` bucket. Credentials come from `MINIO_ROOT_USER` / `MINIO_ROOT_PASSWORD` in `.env` and `.env.example`, with no default fallback (see PR 2).
-2. **Config:** add a `MinioConfig` in `config.py` (endpoint, access key, secret key, bucket) using the `_require_env` helper from PR 2. Change `ICEBERG_WAREHOUSE_PATH` to `s3a://lakehouse/warehouse`.
-3. **Catalog:** in `utils/iceberg_helpers.py:49`, stop hardcoding the `file://` prefix and use the configured URI scheme. Add the S3A settings to the Spark session: `spark.hadoop.fs.s3a.endpoint`, `.access.key`, `.secret.key`, `.path.style.access=true`, `.connection.ssl.enabled=false` for local MinIO, and `fs.s3a.impl`.
-4. **Jars:** add `hadoop-aws` and `aws-java-sdk-bundle` matching the Spark 3.5.1 Hadoop version to `infra/docker/spark/Dockerfile` (baked into the image, not fetched at runtime), pinned alongside the Iceberg 1.9.1 jar.
-5. **Hardcoded local paths to migrate or keep:**
-   - `streaming/structured_streaming_job.py:38` `CHECKPOINT_BASE = "/data/lakehouse/checkpoints"` should become `s3a://lakehouse/checkpoints` via config.
-   - `batch/bronze_to_silver.py:49-50` `STAGING_CAMPAIGNS_DIR` and `ARCHIVED_CAMPAIGNS_DIR` are a landing zone, probably written by NiFi. Check how NiFi writes there first. Either keep them on a local volume, or move to a bucket prefix and change the NiFi processors (and the archive step, which becomes copy + delete on S3).
-   - `init-lakehouse` service and the `lakehouse-data` volume can be removed once nothing mounts them.
-6. **Migration of existing data:** this is a dev project, so the default is to re-seed and re-run (`make seed`, then batch). Optional: `mc mirror` the old volume into the bucket, but Iceberg metadata files embed absolute `file://` paths, so a plain copy will not work. Use Iceberg's `register_table` / `rewrite_table_path` procedures, or just rebuild.
-7. **Observability and docs:** add MinIO to the Prometheus scrape config (it exposes `/minio/v2/metrics/cluster`), update the architecture diagram, `docs/SEQUENCE_DIAGRAMS.md`, README, the infrastructure guide, and `.env.example`.
-8. **Tests:** keep unit tests on a local path. Parametrize the `iceberg` marker fixtures in `tests/conftest.py` so the warehouse stays local by default, and add one opt-in `minio` marker test that runs against the compose MinIO (nightly CI job with a MinIO service container).
-
-Risks:
-- S3A and Iceberg jar version mismatches cause cryptic `ClassNotFound` or `NoSuchMethod` errors. Pin and test them together.
-- `EXCHANGE TABLES`, MERGE and `overwritePartitions` behave the same on S3, but atomic directory renames do not exist on S3. Iceberg's metadata-pointer commits avoid this, but any code that lists or renames files directly (the campaigns archive step) needs review.
-- Table commit concurrency still relies on the JDBC catalog in Postgres, so that stays.
+Risks: the Spark image must be rebuilt (`docker compose build`), and the MinIO image tags must be supplied in `.env`.
 
 ## Verification
 - Every PR: `make lint` and `make test` pass locally, and the CI job passes once PR 1 lands.
@@ -94,9 +87,9 @@ Risks:
 - PR 5: the new metadata drift test passes, and fails when a metadata file is edited by hand.
 - PR 6: `make test-spark` and `make test-iceberg` before and after. Run `make run-batch` end to end on seeded data and compare gold row counts and the ClickHouse marts against a pre-refactor run.
 
-- PR 7: `docker compose up` brings up MinIO healthy and the `lakehouse` bucket exists. Run seed, `make run-batch` and the streaming job, then confirm Parquet and metadata objects appear under `s3a://lakehouse/warehouse` in the MinIO console and nothing is written to the local volume. Run `make clean` and confirm the bucket data survives if only `minio-data` is kept. Compare gold row counts against a local-filesystem run. Run the `minio`-marked test.
+- PR 7: `docker compose build` then `docker compose --profile core up -d`: MinIO healthy, `minio-init` exited 0 and the `lakehouse` bucket exists. Run seed and `make run-batch`, then confirm Parquet and metadata objects appear under `warehouse/` in the MinIO console. Run `make clean` and confirm the bucket data survives if only `minio-data` is kept. Compare gold row counts against a local-filesystem run. Run the `minio`-marked test.
 
 ## Open questions
-- MinIO landing zone for NiFi campaign CSVs: keep on a local volume or move into the bucket (see PR 7, step 5).
+- MinIO landing zone for NiFi campaign CSVs and streaming checkpoints: currently kept on the local volume (see PR 7). Moving them needs S3A jars and NiFi processor changes.
 - Lockfile tool: `uv` (recommended) or pip-tools.
 - How NiFi secrets should be handled: parameter context or placeholder with a documented manual step.
