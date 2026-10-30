@@ -174,3 +174,30 @@ def test_bronze_order_items_has_ingested_at_and_partition():
     assert "ingested_at" in col_names
     assert "partition_by" in contract
     assert len(contract["partition_by"]) > 0
+
+
+def test_batch_quality_gates_reference_datasets_with_rules():
+    """Every run_quality_gate(dataset_name=...) in the batch job must resolve to real rules.
+
+    quarantine.* quality files are intentionally empty, so pointing a gate at
+    one silently disables every null/range check for that dataset.
+    """
+    import pathlib
+    import re
+
+    source = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "src"
+        / "dataone"
+        / "batch"
+        / "bronze_to_silver.py"
+    ).read_text(encoding="utf-8")
+    dataset_names = re.findall(r'dataset_name="([^"]+)"', source)
+    assert dataset_names, "no quality gates found in bronze_to_silver.py"
+
+    registry = get_registry()
+    for name in dataset_names:
+        rules = registry.get_quality(name)
+        assert rules.get("required_columns") or rules.get(
+            "column_bounds"
+        ), f"quality gate uses {name}, which has no rules in metadata/quality/"
