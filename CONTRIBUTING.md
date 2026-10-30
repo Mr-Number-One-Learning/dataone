@@ -24,10 +24,10 @@ To ensure you don't clash with system Python dependencies or PySpark mismatch is
    Installing the project in editable mode lets `python -m dataone....` and the tests resolve the `dataone` package without any `PYTHONPATH` juggling (the Makefile also exports `PYTHONPATH=src`).
    Dependencies are declared once, in `pyproject.toml`. `requirements.txt` / `requirements-dev.txt` simply point at it (`pip install -r requirements-dev.txt` also works, with unpinned `>=` ranges).
 
-   To regenerate the lockfiles after changing `pyproject.toml` (uses [uv](https://docs.astral.sh/uv/)):
+   To regenerate the lockfiles after changing `pyproject.toml` (uses [uv](https://docs.astral.sh/uv/); `--universal` keeps platform markers such as `pywin32 ; sys_platform == 'win32'` so the lock installs on Linux CI as well as Windows):
    ```bash
-   uv pip compile pyproject.toml -o requirements.lock --python-version 3.10
-   uv pip compile pyproject.toml --extra dev -o requirements-dev.lock --python-version 3.10
+   uv pip compile pyproject.toml --universal -o requirements.lock --python-version 3.10
+   uv pip compile pyproject.toml --extra dev --universal -o requirements-dev.lock --python-version 3.10
    ```
 
 ---
