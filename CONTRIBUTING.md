@@ -19,20 +19,15 @@ To ensure you don't clash with system Python dependencies or PySpark mismatch is
    Install the standard project dependencies and the development dependencies (which include formatting and testing tools):
    ```bash
    pip install -r requirements-dev.lock   # reproducible: exact pinned versions
-   pip install -e .
+   pip install -e . --no-deps             # the project itself, editable, without re-resolving the pins
    ```
+   Installing the project in editable mode lets `python -m dataone....` and the tests resolve the `dataone` package without any `PYTHONPATH` juggling (the Makefile also exports `PYTHONPATH=src`).
    Dependencies are declared once, in `pyproject.toml`. `requirements.txt` / `requirements-dev.txt` simply point at it (`pip install -r requirements-dev.txt` also works, with unpinned `>=` ranges).
 
    To regenerate the lockfiles after changing `pyproject.toml` (uses [uv](https://docs.astral.sh/uv/)):
    ```bash
    uv pip compile pyproject.toml -o requirements.lock --python-version 3.10
    uv pip compile pyproject.toml --extra dev -o requirements-dev.lock --python-version 3.10
-   ```
-
-4. **Install the Package (recommended)**:
-   Install the project itself in editable mode so `python -m dataone....` and the tests resolve the `dataone` package without any `PYTHONPATH` juggling:
-   ```bash
-   pip install -e .
    ```
 
 ---

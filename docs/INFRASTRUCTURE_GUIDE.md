@@ -1,6 +1,6 @@
 # Infrastructure & Deployment Guide
 
-This directory contains the Docker configurations, schemas, Grafana dashboards, and metrics exporters that orchestrate the DataOne lakehouse environment.
+This guide covers the Docker configurations, schemas, Grafana dashboards, and metrics exporters (under `infra/` and `docker-compose.yml`) that run the DataOne lakehouse environment.
 
 ## 🛠 Prerequisites
 - **Docker** & **Docker Compose** (Ensure at least 6GB of RAM is allocated to Docker Desktop if running on Mac/Windows).
@@ -26,7 +26,13 @@ Copy `.env.example` to `.env` before starting the cluster.
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Least-privilege app user the Spark jobs use | `dataone-app` / `changeme1234` |
 | `MINIO_BUCKET` / `MINIO_ENDPOINT` / `MINIO_REGION` | Warehouse bucket, in-network endpoint, signing region | `lakehouse` / `http://minio:9000` / `us-east-1` |
 | `GRAFANA_ADMIN_PASSWORD` | Access password for the dashboard UI | `changeme` |
-| `GEN_*` | Data generator constraints (seed, row counts) | *See .env.example* |
+| `MARQUEZ_USER` / `MARQUEZ_PASSWORD` | Marquez metadata DB credentials (`MARQUEZ_PASSWORD` is required; compose fails without it) | `marquez` / `changeme` |
+| `KAFKA_TOPIC_ORDERS_CDC` / `KAFKA_TOPIC_CLICKSTREAM` | Kafka topic names | `orders-cdc` / `clickstream` |
+| `ICEBERG_CATALOG_NAME` | Spark catalog name for the Iceberg JDBC catalog | `dataone_catalog` |
+| `SPARK_MASTER_URL` | Spark master the workers register with | `spark://spark-master:7077` |
+| `PROMETHEUS_PORT` / `GRAFANA_PORT` / `TABIX_PORT` | Host ports for those UIs | `9090` / `3000` / `8088` |
+| `PREFECT_API_URL` | Prefect API used by the host-run flows (`make schedule`, `make stream-cdc`) | `http://localhost:4200/api` |
+| `GEN_*` / `GEN_LIVE_*` | Data generator and live-orders generator settings (seed, row counts, rates) | *See .env.example* |
 
 ## 🪣 Object storage (MinIO)
 
@@ -34,7 +40,7 @@ The Iceberg warehouse (Parquet data files plus table metadata) lives in the MinI
 
 - S3 API on the host: `http://localhost:9100` (host port 9000 is ClickHouse's). Console: `http://localhost:9001`.
 - The `lakehouse-data` volume is still mounted for **streaming checkpoints** and **NiFi's campaign staging files**; those are local by design.
-- After pulling this change, rebuild the Spark image (`docker compose build`, the jar list changed) and add the MinIO variables from `.env.example` to your `.env`.
+- After pulling this change, rebuild the Spark image (`docker compose --profile core build`, the jar list changed) and add the MinIO variables from `.env.example` to your `.env`.
 - Existing local-filesystem tables are not migrated (Iceberg metadata embeds absolute `file://` paths). Re-seed and re-run the batch, or unset `ICEBERG_WAREHOUSE` to keep using the local warehouse.
 - Opt-in integration test: `make test-minio` (needs MinIO running).
 
@@ -59,17 +65,11 @@ This starts the on-demand batch worker, submits the ETL job, and stops the worke
 make batch-stop
 ```
 
-**Run the Batch ETL Automatically (Daemon):**
+**Run the Batch ETL Automatically (Prefect):**
 ```bash
 make schedule
 ```
-This launches a lightweight Python orchestrator that automatically triggers the batch pipeline at 02:00 AM daily.
-
-You can also pass an optional `INTERVAL` parameter:
-```bash
-make schedule INTERVAL=30m  # Runs every 30 minutes
-make schedule INTERVAL=2h   # Runs every 2 hours
-```
+This serves the Prefect `nightly-batch` flow (cron `0 2 * * *`, 02:00 daily) from a foreground process on your machine; keep it running. Each run executes the four batch stages as separate Prefect tasks with their own retries. The schedule is fixed in `src/dataone/orchestration/nightly_batch.py`; there is no `INTERVAL` option. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 ## 🕸️ Data Lineage (OpenLineage & Marquez)
 
@@ -87,13 +87,18 @@ DataOne tracks PySpark job data lineage using **OpenLineage**. Instead of sendin
 | **Mongo Express** | `8081` | [http://localhost:8081](http://localhost:8081) |
 | **Spark Master UI** | `8099` | [http://localhost:8099](http://localhost:8099) |
 | **Prometheus** | `9090` | [http://localhost:9090](http://localhost:9090) |
+| **Prefect UI** | `4200` | [http://localhost:4200](http://localhost:4200) |
+| **Marquez API** (+ admin) | `5000` / `5001` | `http://localhost:5000/api/v1` |
 | **MinIO Console** | `9001` | [http://localhost:9001](http://localhost:9001) |
 | **MinIO S3 API** | `9100` | `http://localhost:9100` |
 | **Postgres** (JDBC) | `5445` | `jdbc:postgresql://localhost:5445/dataone` |
 | **ClickHouse** (HTTP) | `8123` | `http://localhost:8123` |
+| **ClickHouse** (native / Prometheus metrics) | `9000` / `9363` | `localhost:9000` / `http://localhost:9363/metrics` |
+| **MongoDB** | `27017` | `mongodb://localhost:27017` |
 | **Kafka** (External) | `9092` | `localhost:9092` |
+| **NiFi reviews listener** (plain HTTP) | `9900` | `http://localhost:9900/reviews` |
 
-> **Security**: every published port is bound to `127.0.0.1`, so these URLs work from the host only. Passwords have no in-code defaults; `docker compose` and the Python config both fail fast if a required value in `.env` is missing.
+> **Security**: every published port except the NiFi reviews listener (`NIFI_REVIEWS_LISTEN_PORT`, published on all interfaces) is bound to `127.0.0.1`, so these URLs work from the host only. Passwords have no in-code defaults; `docker compose` and the Python config both fail fast if a required value in `.env` is missing.
 
 ## 📊 Grafana Provisioning & JSON Architecture
 

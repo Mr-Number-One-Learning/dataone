@@ -12,7 +12,7 @@ make up
 ```
 - **Description:** Starts core infrastructure services in background daemon mode.
 - **Underlying Command:** `docker compose --profile core up -d`
-- **Use Case:** Run this first to spin up Kafka, PostgreSQL, ClickHouse, Prometheus, Grafana, and the Spark master/workers.
+- **Use Case:** Run this first to spin up the `core` profile: Kafka, PostgreSQL, MongoDB, ClickHouse, MinIO, NiFi, the Spark master and streaming worker, Prometheus, Grafana, Marquez and Prefect. The batch Spark worker is in the `batch` profile and is started on demand by `make run-batch`.
 
 ### Stops Core Services
 ```bash
@@ -60,7 +60,7 @@ make run-batch
   - `STAGE` (e.g. `standardize_silver`): Medallion stage to run.
   - `BATCH_CONTAINER`, `BATCH_DRIVER_MEMORY`, `BATCH_EXECUTOR_MEMORY` (defaults `dataone-spark-worker-batch`, `512m`, `4000m`): Override the batch container name and Spark memory, e.g. `make run-batch BATCH_EXECUTOR_MEMORY=2000m`.
 - **Allowed `STAGE` choices:**
-  - `ingest_bronze` - Ingests external source file campaigns and reviews.
+  - `ingest_bronze` - Ingests NiFi-staged campaign files, MongoDB reviews, and Postgres `products` (full snapshot) and `order_items` (incremental) into Bronze.
   - `standardize_silver` - Standardizes bronze tables, runs quality gates, and merges records into Silver Iceberg tables.
   - `model_gold` - Curates and transforms Silver data into Gold dimensions and fact metrics.
   - `sync_clickhouse` - Synchronizes computed business marts to ClickHouse.
@@ -81,6 +81,18 @@ make run-batch
     ```bash
     make run-batch STAGE=model_gold START_DATE=2026-07-01 END_DATE=2026-07-05
     ```
+
+### Run the Batch Pipeline (alias)
+```bash
+make batch
+```
+- **Description:** Alias for `make run-batch` (same options).
+
+### Backfill a Date Range
+```bash
+python -m dataone.batch.backfill --start 2026-07-01 --end 2026-07-31 --chunk-days 7
+```
+- **Description:** Re-runs the batch job over a historical date range, one `spark-submit` per window. `--chunk-days N` (default 0 = one job for the whole range) splits the range so a failed window can be resumed. The Prefect `backfill(start, end)` flow in `nightly_batch.py` does the same stage by stage.
 
 ### Stop Batch Worker
 ```bash
@@ -111,7 +123,7 @@ make stream-job
 ```bash
 make stream-cdc
 ```
-- **Description:** Launches the database CDC polling loops locally. Emulates a CDC agent by periodically reading postgres WAL/CDC changes and writing them to the `orders-cdc` topic.
+- **Description:** Serves the Prefect `cdc-poll` flow from your machine (`python src/dataone/orchestration/cdc_poll.py`). Every 5 seconds it polls the Postgres `customers` and `orders` tables for rows newer than their `updated_at` watermark and publishes change events to the `orders-cdc` topic. Needs the Prefect server (`make up`).
 
 ### Run Live Orders Generator
 ```bash
@@ -139,7 +151,7 @@ make query-dead-letters
 ```bash
 make schedule
 ```
-- **Description:** Runs the Prefect orchestration agent script to register flows, tasks, and begin executing schedules.
+- **Description:** Serves the Prefect `nightly-batch` flow (cron `0 2 * * *`) from a foreground process on your machine; keep it running. Each run executes `ingest_bronze`, `standardize_silver`, `model_gold` and `sync_clickhouse` as separate Prefect tasks (each a `make run-batch STAGE=...`). The `backfill` flow is not served by this command.
 - **Underlying Command:** `python src/dataone/orchestration/nightly_batch.py`
 
 ---
@@ -173,7 +185,7 @@ make test-iceberg
 ```
 - **Description:** Runs tests marked with `@pytest.mark.iceberg`.
 - **Underlying Command:** `pytest -v -m iceberg`
-- **Pre-requisites:** Requires a running docker-compose container environment.
+- **Pre-requisites:** Requires a local Java install and network access on the first run (to fetch the Iceberg jar). No Docker needed: the tests use a throwaway local Hadoop catalog (see `tests/conftest.py`).
 
 ### Run MinIO Marked Tests
 ```bash

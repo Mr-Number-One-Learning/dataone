@@ -27,6 +27,7 @@ flowchart LR
         b_click["bronze.clickstream"]
         b_rev["bronze.reviews"]
         b_camp["bronze.campaigns"]
+        b_prod["bronze.products & order_items"]
         b_dlq["bronze.dead_letters"]
     end
 
@@ -36,6 +37,8 @@ flowchart LR
         s_cust["silver.customers"]
         s_click["silver.clickstream"]
         s_rev["silver.reviews"]
+        s_prod["silver.products & order_items"]
+        s_camp["silver.campaigns"]
     end
 
     subgraph Gold ["4. Gold Layer (Star Schema + Marts)"]
@@ -64,27 +67,32 @@ flowchart LR
     Kafka -.->|"Malformed"| b_dlq
     NiFi --> b_camp
     NiFi --> b_rev
+    Postgres["Postgres (JDBC)"] --> b_prod
 
     %% Bronze -> Silver
     b_cdc -->|"PySpark"| s_orders
     b_cdc -->|"PySpark"| s_cust
     b_click -->|"PySpark"| s_click
     b_rev -->|"PySpark"| s_rev
+    b_prod -->|"PySpark"| s_prod
+    b_camp -->|"PySpark"| s_camp
     
     %% DQ Fails (Routed to Quarantine)
     b_cdc -.->|"Fails DQ"| q_tables
     b_click -.->|"Fails DQ"| q_tables
     b_rev -.->|"Fails DQ"| q_tables
+    b_prod -.->|"Fails DQ"| q_tables
+    b_camp -.->|"Fails DQ"| q_tables
 
     %% Silver -> Gold (Star Schema)
     s_orders -->|"Dim. Model"| g_fact
+    s_prod -->|"Dim. Model"| g_fact
     s_cust -->|"SCD2"| g_dims
-    b_camp -->|"Skips Silver"| g_dims
+    s_prod --> g_dims
+    s_camp --> g_dims
     
     %% Star Schema -> Gold (Marts)
     g_fact --> g_sales
-    g_fact --> g_conv
-    g_fact --> g_sent
     s_click --> g_conv
     s_rev --> g_sent
     g_dims --> g_camp
@@ -122,7 +130,7 @@ flowchart LR
     end
 
     subgraph Compute ["Stream Processing"]
-        SparkStream["PySpark Structured Streaming\n(jobs/streaming)"]
+        SparkStream["PySpark Structured Streaming\n(src/dataone/streaming)"]
     end
 
     subgraph Sink ["Lakehouse Landing"]
@@ -150,11 +158,11 @@ flowchart LR
     end
 
     subgraph Ingest ["Batch Ingestion"]
-        NiFi["Apache NiFi"]
+        NiFi["Apache NiFi\n(reviews HTTP endpoint,\ncampaign CSV staging)"]
     end
     
     subgraph Compute ["Batch ETL"]
-        SparkBatch["PySpark Batch Job\n(jobs/batch)"]
+        SparkBatch["PySpark Batch Job\n(src/dataone/batch)"]
         DQ{"Data Quality\nGates"}
     end
 
@@ -169,9 +177,10 @@ flowchart LR
         CH[("ClickHouse")]
     end
 
-    Mongo --> NiFi
+    NiFi -->|"ListenHTTP → PutMongo"| Mongo
     CSV --> NiFi
-    NiFi --> SparkBatch
+    NiFi -->|"Staged files"| SparkBatch
+    Mongo -->|"Nightly read"| SparkBatch
     Bronze -->|"Batch Read"| SparkBatch
 
     SparkBatch -->|"Transform & Dedup"| DQ
@@ -242,7 +251,7 @@ Contains the complete Kimball Star Schema and all pre-aggregated business marts.
 
 - **`gold.fact_order_items`**:
   - **Function:** Core transactional fact recording completed sales.
-  - **Keys:** PK: `sk_order_id` (SHA-256 surrogate). FKs: `sk_product_id`, `sk_campaign_id`, `date_key` (INT), `customer_id`.
+  - **Keys:** PK: `sk_order_id` (MD5 of `source_system || order_id || product_id`). FKs: `sk_customer_id` (the SCD2 version valid at `order_date`), `sk_product_id`, `sk_campaign_id`, `date_key` (INT); `customer_id` kept as the business key.
   - **Grain:** One row per discrete order line item sold.
   - **Surrogate Keys:** Every conformed dimension is joinable via deterministic hash SKs, isolating the analytics layer from upstream key changes.
 
@@ -250,7 +259,7 @@ Contains the complete Kimball Star Schema and all pre-aggregated business marts.
 
 - **`gold.dim_customer`** (SCD Type 2):
   - **Function:** Tracks historical and current customer demographic information.
-  - **Keys:** PK: `sk_customer_id` (SHA-256 surrogate). Business Key: `customer_id`.
+  - **Keys:** PK: `sk_customer_id` (MD5 of `source_system || customer_id || valid_from`, one per version). Business Key: `customer_id`.
   - **Grain:** One row per customer per distinct period of state (tracked via `valid_from`, `valid_to`, and `is_current`).
 
 - **`gold.dim_date`**:
@@ -268,9 +277,9 @@ Contains the complete Kimball Star Schema and all pre-aggregated business marts.
 #### Aggregated Business Marts (Wide-Table / OBT approach)
 
 - **`gold.daily_sales`**: Aggregates `fact_order_items` by day. Calculates 7-day and 30-day rolling revenue averages.
-- **`gold.conversion_rate`**: Joins `fact_order_items` against `bronze.clickstream` to track checkout completion efficiency.
+- **`gold.conversion_rate`**: Daily sessions vs. checkout completions from `silver.clickstream`, to track checkout completion efficiency.
 - **`gold.customer_clv`**: Customer Lifetime Value aggregating historical spend and total orders.
-- **`gold.product_sentiment`**: Blends `silver.reviews` and `fact_order_items` to derive average product ratings and NLP sentiment.
+- **`gold.product_sentiment`**: Blends `silver.reviews` with `silver.products` (name, category) to derive average product ratings and NLP sentiment.
 - **`gold.top_products`**: RANK() per category by revenue.
 - **`gold.customer_segments`**: Revenue and engagement metrics by demographic segment.
 - **`gold.funnel_conversion`**: Full checkout funnel (page_view → add_to_cart → checkout_start → checkout_complete).
@@ -292,7 +301,7 @@ Contains the complete Kimball Star Schema and all pre-aggregated business marts.
 2. **Pre-Aggregation (Gold Marts):** 
    Instead of forcing the BI tool (Grafana) or the Serving DB (ClickHouse) to compute real-time averages from massive fact tables, we deliberately pre-aggregate metrics like `daily_sales` and `conversion_rate` into the Gold layer. This sacrifices maximum analytical flexibility (drill-down capabilities) to optimize for lighting-fast read-performance and minimal serving compute costs. However, `fact_order_items` is also synced to ClickHouse alongside the aggregates, enabling analysts to run ad-hoc Star Schema queries (e.g., revenue by product category for a specific campaign) without requiring new pipeline work.
 3. **Surrogate Key Strategy:**
-   All dimension-to-fact joins use deterministic SHA-256 hash surrogate keys (`make_surrogate_key()`). This isolates the analytics layer from upstream primary key recycling or data type changes, and supports future multi-source-system integration without key collisions.
+   All dimension-to-fact joins use deterministic hash surrogate keys: SHA-256 via `make_surrogate_key()` for `dim_product` and `dim_campaign`, and MD5 for the per-version `dim_customer` key and the fact's `sk_order_id`. This isolates the analytics layer from upstream primary key recycling or data type changes, and supports future multi-source-system integration without key collisions.
 
 ---
 
@@ -302,7 +311,7 @@ The following physical optimizations are built into the PySpark Iceberg DDLs (`s
 
 1. **Partitioning (Time-based Data Pruning):** 
    - `gold.fact_order_items` is partitioned by `days(order_date)`.
-   - `silver.reviews` is partitioned by `months(submitted_at)`.
+   - `silver.reviews` is partitioned by `days(submitted_at)`.
    - *Mechanic:* Enables query engines to ignore entirely irrelevant directories when querying a specific date range, drastically reducing I/O.
 2. **Bucketing (Join Optimization):** 
    - Both `gold.dim_customer` and `gold.fact_order_items` are bucketed by `bucket(16, customer_id)`.
@@ -330,11 +339,9 @@ Every dataset has associated metadata contracts declaring its ownership, SLA, pa
 
 ### Partitioning & Compaction Details
 To optimize performance, limit metadata overhead, and solve the "small files problem":
-- **Iceberg Partition Evolution**: High-volume tables use Iceberg's native partition transforms (e.g., `days(order_date)`, `months(submitted_at)`, and `bucket(16, customer_id)`). This allows the partitioning schema to evolve over time (e.g., changing from daily to monthly) without rewriting historical data.
-- **Sort Order**: Key datasets are sorted by high-query-frequency keys (e.g., `fact_order_items` sorted by `order_date` and `customer_id`) before writing. This clusters data logically, improving parquet min/max dictionary pruning.
-- **Target File Size**: The platform targets **100–500 MB** Iceberg data files. For local low-resource containers, row groups are tuned to `16 MiB` to avoid OOMs, but in production, Iceberg properties control file sizing:
-  `'write.target-file-size-bytes'='536870912'` (512 MB).
-- **Compaction & Retention**: A maintenance routine calls Iceberg's `rewrite_data_files` to compact small files into the target size and runs `expire_snapshots` to enforce data retention limits.
+- **Iceberg Partition Evolution**: High-volume tables use Iceberg's native partition transforms (e.g., `days(order_date)`, `days(submitted_at)`, `months(sales_date)`, and `bucket(16, customer_id)`). This allows the partitioning schema to evolve over time (e.g., changing from daily to monthly) without rewriting historical data.
+- **Sort Order**: Contracts declare a `sort_order` per dataset (e.g., `gold.fact_order_items` is sorted by `sk_order_id`).
+- **Target File Size & Compaction (not yet implemented)**: The code sets no `write.target-file-size-bytes` property and runs no maintenance job today. The intended production setup is ~512 MB data files, with a scheduled maintenance task calling Iceberg's `rewrite_data_files` (compaction) and `expire_snapshots` (retention).
 
 ---
 

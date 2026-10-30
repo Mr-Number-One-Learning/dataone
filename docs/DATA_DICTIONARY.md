@@ -34,6 +34,8 @@ The initial insertion point in the Iceberg lakehouse. Data is append-only, prese
 - `bronze.clickstream`
 - `bronze.campaigns`
 - `bronze.reviews`
+- `bronze.products` (Daily full snapshot of the Postgres catalog)
+- `bronze.order_items` (Incremental Postgres order lines)
 - `bronze.dead_letters` (Unparseable or malformed raw events)
 
 ### 3. Silver Layer (Curated & Validated)
@@ -42,10 +44,18 @@ Data is cleansed, joined, and standardized. Invalid records are routed to the `q
 - `silver.customers` (Curated latest-state customers)
 - `silver.orders` (Curated deduplicated orders)
 - `silver.clickstream` (Curated structured click events)
+- `silver.products` (Conformed product catalog)
+- `silver.order_items` (Conformed order lines)
+- `silver.campaigns` (Validated marketing campaigns)
+
 ### 4. Gold Layer (Star Schema + Business Analytics Marts)
 The complete Kimball star schema plus aggregated, highly optimized marts directly served to ClickHouse/Grafana.
 - Star schema: `gold.fact_order_items`, `gold.dim_customer` (SCD Type 2), `gold.dim_product`, `gold.dim_campaign`, `gold.dim_date`.
 - Marts: `gold.daily_sales`, `gold.top_products`, `gold.customer_segments`, `gold.conversion_rate`, `gold.campaign_effectiveness`, `gold.product_sentiment`, `gold.customer_clv`, `gold.funnel_conversion`, `gold.roas`, `gold.quarantine_summary`, `gold.quality_gate_summary`.
+
+### 5. Quarantine Layer
+Rows that fail the quality gate, with the source schema plus a `_quarantine_reason` column. Append-only audit trail.
+- `quarantine.campaigns`, `quarantine.customers`, `quarantine.orders`, `quarantine.order_items`, `quarantine.products`, `quarantine.clickstream`, `quarantine.reviews`, `quarantine.fact_order_items`
 
 ---
 
@@ -57,6 +67,7 @@ Partitioned By: `days(order_date)`, `bucket(16, customer_id)`
 |---|---|---|
 | `sk_order_id` | `STRING` | Surrogate Key |
 | `order_id` | `BIGINT` | Unique Order Identifier |
+| `sk_customer_id` | `STRING` | FK to `gold.dim_customer` (the SCD2 version valid at `order_date`) |
 | `customer_id` | `BIGINT` | Customer Identifier |
 | `order_date` | `TIMESTAMP` | Time of placement |
 | `date_key` | `INT` | FK to `gold.dim_date` (YYYYMMDD) |
@@ -89,7 +100,7 @@ Partitioned By: `bucket(16, customer_id)`
 ## 🏗️ Core Silver Schemas
 
 ### `silver.reviews`
-Partitioned By: `months(submitted_at)`
+Partitioned By: `days(submitted_at)`
 | Column Name | Data Type | Description |
 |---|---|---|
 | `review_id` | `STRING` | Unique Review Identifier |

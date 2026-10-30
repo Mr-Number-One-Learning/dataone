@@ -169,7 +169,8 @@ flowchart TD
     %% Storage Layer Subgraph
     subgraph STORAGE ["6. STORAGE & CATALOG LAYER"]
         ICEBERG["<img src='assets/logos/iceberg.svg' width='40'/><br/><b>Apache Iceberg Catalog</b><br/>Atomic commits, partition evolution, schema contracts"]:::serving
-        STAGING_DIR["<b>Lakehouse Staging Stagger</b><br/>Campaign staging and Spark checkpoints path"]:::serving
+        MINIO["<b>MinIO (S3-compatible)</b><br/>Iceberg warehouse: Parquet data + table metadata via S3FileIO"]:::serving
+        STAGING_DIR["<b>lakehouse-data volume</b><br/>Campaign staging and Spark streaming checkpoints"]:::serving
     end
 
     %% Serving & Analytics Layer Subgraph
@@ -262,7 +263,8 @@ flowchart TD
 
     %% Iceberg mapping
     MEDALLION -->|Implemented in| ICEBERG
-    ICEBERG -->|Storage path| STAGING_DIR
+    ICEBERG -->|Data + metadata files| MINIO
+    SPARK_STREAM -.->|Checkpoints| STAGING_DIR
 
     %% ClickHouse Sync
     G_MARTS -->|"TRUNCATE + JDBC Load Staging and EXCHANGE TABLES swap"| CLICKHOUSE_DB
@@ -384,7 +386,7 @@ The Serving Layer combines real-time streaming results and nightly batch metrics
 
 ## Medallion Architecture Explanation
 
-The storage layer is partitioned into four distinct zones in **Apache Iceberg**, guaranteeing isolated responsibilities and schema integrity.
+The storage layer is partitioned into four distinct zones in **Apache Iceberg**, guaranteeing isolated responsibilities and schema integrity. The table files live in the MinIO bucket `lakehouse` (S3-compatible, written through Iceberg's `S3FileIO`), with the catalog in Postgres; only streaming checkpoints and NiFi's campaign staging stay on the local `lakehouse-data` volume.
 
 ```
  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
@@ -473,10 +475,10 @@ The platform incorporates comprehensive operational observability, dividing moni
 
 ### 2. Operational Dashboards
 Grafana serves as the central visualization platform:
-* **Business KPIs:** Displays total sales, AOV, campaign ROAS, and conversion funnels.
+* **Business KPIs:** Displays daily revenue with rolling averages, top products, customer segments and CLV, conversion and funnel rates, campaign effectiveness and ROAS, product sentiment, and the live activity pulse.
 * **Data Quality Dashboard:** Visualizes rows passed vs. quarantined, tracking invalid data over time.
-* **Operations Overview:** Tracks system resource usage (CPU/Memory) and Docker container states.
-* **Real-time Operations:** Monitors active streaming queries, micro-batch latency, and Kafka lags.
+* **Operations Overview:** Tracks container CPU/memory (cAdvisor), Kafka brokers, partitions and clickstream backlog, Postgres connections, ClickHouse query rate, and Postgres/Spark up-status (Prometheus).
+* **Real-time Operations:** Shows orders in the last 5 minutes, order velocity, live order status breakdown, estimated revenue for the last hour, stale orders and batch vs. real-time extrapolation, from the ClickHouse Kafka-engine materialized views.
 
 ### 3. Orchestration Artifacts
 * Upon completing a batch flow, Prefect queries PostgreSQL's `_pipeline_runs` table, formats execution states and data volumes into a Markdown summary table, and publishes it as a native Prefect run artifact. This provides developers with immediate feedback on nightly run success.
@@ -496,8 +498,9 @@ The following table summarizes the technology components implemented in the Data
 | **Streaming** | Apache Kafka | 3.7.0 | Distributed event streaming broker hosting CDC, clickstream, and lineage topics. |
 | **Processing** | Apache Spark | 3.5.1 | Engine executing Structured Streaming and nightly Batch ETL workloads. |
 | **Storage** | Apache Iceberg | 1.9.1 | Table format providing ACID transaction guarantees and schema contracts. |
+| **Object Storage** | MinIO | image tag set in `.env` (`MINIO_IMAGE`) | S3-compatible store holding the Iceberg warehouse (data + metadata files). |
 | **Serving** | ClickHouse | 24.3 | OLAP serving engine hosting aggregated marts and materialized views. |
-| **Orchestration** | Prefect | 3-latest | Scheduling platform orchestrating nightly runs and backfill workflows. |
+| **Orchestration** | Prefect | 3.7.8 (pinned by digest) | Scheduling platform orchestrating nightly runs and backfill workflows. |
 | **Lineage** | OpenLineage / Marquez | Spec 2.0.2 / Marquez 0.43.0 | Captures dataset schema evolutions and executes job relationship maps. |
 | **Monitoring** | Prometheus | v2.53.0 | Central metrics scraper gathering resource, database, and pipeline data. |
 | **Visualization** | Grafana | 11.0.0 | Graphing portal hosting dashboards for operations and business KPIs. |

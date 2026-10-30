@@ -683,7 +683,7 @@ def standardize_clickstream(
     bronze_clickstream_df: DataFrame, tracker
 ) -> tuple[QualityResult, DataFrame]:
     """Returns (quality, cached passed DataFrame). The caller unpersists it."""
-    quality = run_quality_gate(bronze_clickstream_df, dataset_name="quarantine.clickstream")
+    quality = run_quality_gate(bronze_clickstream_df, dataset_name="silver.clickstream")
     is_valid_event = F.col("event_type").isin(VALID_EVENT_TYPES)
 
     passed = quality.passed_df.filter(is_valid_event).cache()
@@ -706,7 +706,7 @@ def standardize_clickstream(
 def standardize_products(spark: SparkSession, tracker) -> QualityResult:
     """Products -> silver.products (SCD Type 1 upsert)."""
     bronze_df = spark.read.format("iceberg").load(table_identifier("bronze", "products"))
-    quality = run_quality_gate(build_silver_products(bronze_df), dataset_name="quarantine.products")
+    quality = run_quality_gate(build_silver_products(bronze_df), dataset_name="silver.products")
     merge_into_silver(spark, quality.passed_df, "products", "product_id")
     write_append(quality.quarantined_df, "quarantine", "products")
     _record_output(tracker, "silver.products", quality)
@@ -717,7 +717,7 @@ def standardize_order_items(spark: SparkSession, tracker) -> QualityResult:
     """Order items -> silver.order_items (insert-only merge)."""
     bronze_df = spark.read.format("iceberg").load(table_identifier("bronze", "order_items"))
     quality = run_quality_gate(
-        build_silver_order_items(bronze_df), dataset_name="quarantine.order_items"
+        build_silver_order_items(bronze_df), dataset_name="silver.order_items"
     )
     merge_into_silver(spark, quality.passed_df, "order_items", "order_item_id")
     write_append(quality.quarantined_df, "quarantine", "order_items")

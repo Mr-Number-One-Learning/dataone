@@ -25,22 +25,22 @@ To understand this project, you need to understand the life of a single data poi
 ### Stream A: Core E-Commerce Transactions (Orders & Customers)
 - **The Origin:** Starts in a PostgreSQL database (acting as our live application database). Movement is triggered by a **CDC Simulator** (*Change Data Capture — a system that quietly listens for any "inserts" or "updates" in a database and broadcasts them as events*). It polls every 5 seconds.
 - **The Landing:** The events are pushed into an Apache Kafka topic named `orders-cdc`, which is scooped up by a PySpark job and dumped into our raw Iceberg table: `bronze.orders_cdc`.
-- **The Journey:** Our nightly batch job (`nightly_batch.py`) wakes up, cracks open the raw JSON data, throws away duplicates, and splits the data cleanly into `silver.orders` and `silver.customers`. Finally, it merges them into our pristine Star Schema as `gold.fact_order_items` and `gold.dim_customer`.
+- **The Journey:** Our nightly batch (the Prefect flow in `nightly_batch.py`, running the Spark stages in `bronze_to_silver.py` and `gold_marts.py`) wakes up, cracks open the raw JSON data, throws away duplicates, and splits the data cleanly into `silver.orders` and `silver.customers`. Finally, it merges them into our pristine Star Schema as `gold.fact_order_items` and `gold.dim_customer`.
 
 ### Stream B: User Clickstream (Behavioral Telemetry)
 - **The Origin:** A Python event generator simulating web traffic (page views, adding items to carts). This is a continuous, never-ending stream of events.
 - **The Landing:** Events fly directly into the `clickstream` Kafka topic and are appended immediately to `bronze.clickstream`.
-- **The Journey:** We scrub out invalid clicks (like missing session IDs) to create `silver.clickstream`. We then join this data against actual completed orders in the Gold layer to calculate our `gold.conversion_rate` (e.g., "Out of 100 people who added to cart, how many actually bought it?").
+- **The Journey:** We scrub out invalid clicks (like missing session IDs) to create `silver.clickstream`. We then aggregate it in the Gold layer to calculate our `gold.conversion_rate` and `gold.funnel_conversion` (e.g., "Out of 100 people who added to cart, how many actually checked out?").
 
 ### Stream C: Product Reviews
-- **The Origin:** Written to a MongoDB NoSQL database (since reviews have messy, variable text). We use **Apache NiFi** (*a visual data-routing tool with a drag-and-drop canvas*) to pull daily batches of new reviews.
-- **The Landing:** NiFi lands the documents into `bronze.reviews`.
+- **The Origin:** Written to a MongoDB NoSQL database (since reviews have messy, variable text). Reviews arrive through **Apache NiFi** (*a visual data-routing tool with a drag-and-drop canvas*): it exposes an HTTP endpoint that the reviews generator posts to, and writes each review into MongoDB.
+- **The Landing:** The nightly Spark job reads the new reviews from MongoDB into `bronze.reviews`.
 - **The Journey:** A PySpark job cleans the text and runs NLP (*Natural Language Processing*) to assign a `sentiment_score` (-1.0 for angry, +1.0 for happy). This is saved as `silver.reviews`, which is then aggregated to calculate the average `gold.product_sentiment`.
 
 ### Stream D: Marketing Campaigns
 - **The Origin:** Daily CSV file drops exported from our marketing platforms (like Facebook Ads).
-- **The Landing:** NiFi watches a folder, grabs new CSVs, and drops them into `bronze.campaigns`.
-- **The Journey:** Campaign data is naturally clean reference data, so it *skips the Silver layer entirely* and is loaded directly into `gold.dim_campaign` to calculate our `gold.roas` (*Return on Ad Spend — how much money we made for every dollar we spent on ads*).
+- **The Landing:** NiFi watches a folder, grabs new CSVs, and stages them on a shared volume; the nightly Spark job loads them into `bronze.campaigns`.
+- **The Journey:** Campaign rows pass the quality gate into `silver.campaigns`, then feed `gold.dim_campaign` and our `gold.roas` (*Return on Ad Spend — how much money we made for every dollar we spent on ads*).
 
 ---
 

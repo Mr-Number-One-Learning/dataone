@@ -1,5 +1,7 @@
 # Airflow Orchestration — Implementation Plan
 
+> **Baseline note:** this plan was written against the old custom scheduler (`scheduler.py`, `retry.py`, `BATCH_JOB_TIMEOUT_SECONDS`), which has since been replaced by Prefect (see [ORCHESTRATOR.md](../ORCHESTRATOR.md)). Phase 2's `--stage` refactor also already exists, with stages `ingest_bronze`, `standardize_silver`, `model_gold` and `sync_clickhouse`. If Airflow is revisited, re-baseline Phases 0–1 on the Prefect flows.
+
 This plan replaces `src/dataone/orchestration/scheduler.py` (the `schedule` + `tenacity` daemon) with **Apache Airflow**, without changing what the pipeline computes, how it's partitioned, or any of its existing idempotency guarantees.
 
 It's staged in three phases, each independently shippable and independently reversible:
@@ -31,7 +33,7 @@ A Phase 3 (lineage + alerting integration) is included at the end, scoped as opt
 
 ### 0.1 — Executor choice and why
 
-Airflow's default multi-container footprint (`CeleryExecutor` + Redis + Flower) is exactly the kind of resource cost `docs/Prefect_Migration_Plan.md` already flagged as the reason a full DAG tool wasn't adopted originally — and that concern is still valid on this project's target hardware (Intel i7-6820HQ, 16GB RAM, already running Kafka + Spark + NiFi + ClickHouse + Grafana + Marquez concurrently).
+Airflow's default multi-container footprint (`CeleryExecutor` + Redis + Flower) is exactly the kind of resource cost `docs/future/Prefect_Migration_Plan.md` already flagged as the reason a full DAG tool wasn't adopted originally — and that concern is still valid on this project's target hardware (Intel i7-6820HQ, 16GB RAM, already running Kafka + Spark + NiFi + ClickHouse + Grafana + Marquez concurrently).
 
 **Use `LocalExecutor`, not `CeleryExecutor`.** `LocalExecutor` runs tasks as subprocesses of the scheduler itself — no Redis, no worker fleet, no Flower — while still giving real task-level parallelism (multiple tasks/DAG runs at once, bounded by `parallelism` and pool settings). For a single nightly DAG with a handful of sequential tasks, this is sufficient, and it keeps the total addition to **two containers** (`airflow-webserver`, `airflow-scheduler`) instead of four or five.
 

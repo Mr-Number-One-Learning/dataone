@@ -28,7 +28,6 @@ Provides a high-level view of daily sales, revenue averages, funnel conversion r
 ## ⚙️ Ops Operations Overview
 Monitors system health, ingestion rates, and infrastructure metrics.
 
-![Ops Operations](images/ops-overview.png)
 ![Detailed Ops](images/Ops%20Opration%20Dashboard.png)
 
 ### Panel Breakdown & Business Value

@@ -13,7 +13,7 @@ The goal of this migration is to replace self-hosted Docker containers with Mana
 | **Source Database** | PostgreSQL Container | Amazon RDS for PostgreSQL | Azure Database for PostgreSQL |
 | **Change Data Capture** | Kafka + Debezium | Amazon MSK (Managed Kafka) + MSK Connect | Azure Event Hubs (Kafka API) or Confluent Cloud |
 | **Batch Ingestion** | Apache NiFi | EC2 / Amazon EKS (Containerized NiFi) | Azure VMs / AKS (Containerized NiFi) |
-| **Data Lake Storage** | Local Disk Volume | Amazon S3 | Azure Data Lake Storage (ADLS) Gen2 |
+| **Data Lake Storage** | MinIO (S3-compatible, Iceberg `S3FileIO`) | Amazon S3 | Azure Data Lake Storage (ADLS) Gen2 |
 | **Lakehouse Catalog** | Hadoop/Filesystem | AWS Glue Data Catalog | Azure Purview / Hive Metastore |
 | **Data Processing (Spark)** | Spark Master/Worker | Amazon EMR or AWS Glue Ray/Spark | Azure Databricks or Synapse Spark Pools |
 | **Serving Layer** | ClickHouse Server | ClickHouse Cloud (AWS Region) | ClickHouse Cloud (Azure Region) |

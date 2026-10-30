@@ -1,5 +1,7 @@
 # Replacing the Custom Orchestrator with Prefect (Local) — Implementation Plan
 
+> **Status: implemented.** This is the original plan, kept as a design record; it describes the pre-migration code (`scheduler.py`, `retry.py`) in the present tense. What shipped differs in a few places: the flows are started with `serve()` from `make schedule` / `make stream-cdc` rather than deployed to the `dataone-process-pool` work pool, the CDC poll runs every 5 seconds, and the optional Phase 5 stage split was done (`bronze_to_silver.py --stage`, one Prefect task per stage). See [ORCHESTRATOR.md](../ORCHESTRATOR.md) for the current setup.
+
 ## Fit check — does Prefect actually fit this project?
 
 **Yes, with one honest caveat below.** Three things about the current codebase make Prefect a low-friction fit rather than a forced one:

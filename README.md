@@ -68,10 +68,10 @@ cp .env.example .env
 Edit `.env` before the first start:
 - Every `*_PASSWORD` / `MINIO_SECRET_KEY` value is **required** and has no in-code default; the apps refuse to start without them. Replace the `changeme` placeholders.
 - Set `MINIO_IMAGE` and `MINIO_MC_IMAGE` to MinIO image tags you have verified (see the comments in `.env.example`); `docker compose` stops with an error if they are empty.
-- All published ports are bound to `127.0.0.1`, so services are reachable from your machine only.
+- Published ports are bound to `127.0.0.1`, so services are reachable from your machine only. The one exception is NiFi's plain-HTTP reviews listener (`NIFI_REVIEWS_LISTEN_PORT`, default 9900), which is published on all interfaces.
 
 ### 1. Start Infrastructure
-Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, MinIO, NiFi, Grafana, and **Prefect**. The first time (and whenever `infra/docker/spark/` changes) build the Spark image first with `docker compose build`:
+Bring up the `core` profile, which includes Postgres, ClickHouse, Kafka, MongoDB, MinIO, NiFi, Grafana, and **Prefect**. `make up` builds the Spark image automatically if it is missing; whenever `infra/docker/spark/` changes, rebuild it with `docker compose --profile core build` (every service is behind a profile, so a plain `docker compose build` builds nothing):
 ```bash
 make up
 ```
@@ -107,14 +107,14 @@ make batch
 > *Note: `make batch` starts the on-demand Spark batch worker, submits the full ETL job (`bronze_to_silver.py`), and stops the worker again when it finishes (if the worker is left running, `make batch-stop` stops it).*
 
 **Automated Schedule (Prefect):**
-The Prefect server and worker run automatically via the `core` profile. To deploy and run the nightly batch scheduler via Prefect:
+The Prefect server runs automatically via the `core` profile. To serve the `nightly-batch` flow on its 02:00 daily cron schedule:
 ```bash
 make schedule
 ```
-Monitor the execution, retries, and logs in the Prefect UI at `http://localhost:4200`.
+This runs `nightly_batch.py` in the foreground on your machine (Prefect's `serve()`), so keep that terminal open; each run executes the four batch stages as separate Prefect tasks. Monitor the execution, retries, and logs in the Prefect UI at `http://localhost:4200`.
 
 ### 5. View Dashboards
-Navigate to `http://localhost:3000` to access Grafana (Default credentials are configured in `.env`). The predefined dashboards pull directly from the ClickHouse layer.
+Navigate to `http://localhost:3000` to access Grafana (Default credentials are configured in `.env`). The Business KPIs, Data Quality and Realtime Operations dashboards read from ClickHouse; the Ops Overview dashboard reads from Prometheus.
 
 You can preview the visual layouts in the **[Dashboards Guide](docs/DASHBOARDS.md)**.
 
@@ -122,7 +122,7 @@ To tear down all resources and clear the persistent volumes, run:
 ```bash
 make clean   # asks for confirmation; `make clean FORCE=1` skips the prompt
 ```
-This deletes the Postgres, MongoDB, ClickHouse, MinIO (the Iceberg warehouse) and Grafana volumes.
+This deletes every project volume: Postgres, MongoDB, ClickHouse, MinIO (the Iceberg warehouse), Kafka, NiFi, the `lakehouse-data` volume (streaming checkpoints and NiFi staging), Prometheus, Grafana and Marquez.
 
 ---
 
@@ -137,17 +137,19 @@ Run the offline test suite locally with `make test` (Spark, Iceberg and MinIO te
 For more detailed information, please refer to the specific documentation guides located throughout the repository:
 
 - **[Architecture & Design Decisions](docs/DECISION.md)**: The single source of truth for the platform's architectural paradigm, tool selection justifications, and structural implementations.
-- **[Orchestration Guide (Prefect)](docs/ORCHESTRATOR.md)**: Describes the Prefect 3.x infrastructure, deployment details, and flow configurations replacing the legacy scheduler.
+- **[Command Catalog](COMMAND_CATALOG.md)**: Every `make` target with its underlying command, options and examples.
+- **[Orchestration Guide (Prefect)](docs/ORCHESTRATOR.md)**: Describes the Prefect 3.x infrastructure, how the flows are served, and their schedules and retries.
+- **[Sequence Diagrams](docs/SEQUENCE_DIAGRAMS.md)** and **[Architecture Workflow](docs/workflow.md)**: Step-by-step diagrams of the batch, real-time, review-ingestion and backfill paths.
 
 - **[Data Dictionary & Schema Contract](docs/DATA_DICTIONARY.md)**: Details the exact lineage paths and precise schema mapping from Bronze through Gold layers.
 - **[Infrastructure Guide](docs/INFRASTRUCTURE_GUIDE.md)**: Maps the Docker profiles, environment variables, mapped ports, and teardown commands.
 - **[NiFi Flows Guide](docs/NIFI_FLOWS_GUIDE.md)**: Visual architecture of the Apache NiFi ingestion processes.
 - **[Dashboards Guide](docs/DASHBOARDS.md)**: Previews of the Grafana dashboards for Business KPIs, Operations, Realtime Operations, and Data Quality.
 - **[Data Modeling Architecture](docs/DATA_MODELING.md)**: Details the Medallion & Kimball dimensional modeling choices, performance optimizations, and SCD Type 2 logic.
-- **[Prefect Orchestration Migration Plan](docs/future/Prefect_Migration_Plan.md)**: Details the migration roadmap for replacing Makefiles with Prefect for advanced pipeline orchestration and observability.
+- **[Prefect Orchestration Migration Plan](docs/future/Prefect_Migration_Plan.md)**: The (now implemented) plan that replaced the legacy custom scheduler with Prefect; kept as a design record.
 - **[Quality & Validation Guide](docs/TESTING_GUIDE.md)**: Outlines Pytest usage, the Spark/Iceberg dependency markers, and the internal Data Quality validation gate.
 - **[Quarantine Layer Architecture](docs/QUARANTINE_LAYER.md)**: Illustrates the DLQ mechanism, how bad rows are routed to quarantine instead of being dropped, and how they are monitored.
-- **[Future Improvements Roadmap](docs/future/Future_Improvements.md)**: Strategic recommendations for elevating the project to a Lead/Senior Data Engineering tier (e.g., dbt, DataHub, CI/CD).
+- **[Future Improvements Roadmap](docs/future/Future_Improvements.md)**: Strategic recommendations for elevating the project to a Lead/Senior Data Engineering tier (dbt for the Gold layer; the real-time Lambda layer is already implemented).
 - **[Cloud Deployment Plan](docs/future/Cloud_Deployment_Plan.md)**: Architectural roadmap and migration strategy for moving the platform to AWS or Azure.
 - **[Stage 1: Future Plan - Predictive Modeling](docs/future/ML_Model_Implementation_Plan.md)**: Details the roadmap for integrating MLflow, Prophet forecasting, and XGBoost churn models into the platform.
 - **[Contributing Guide](CONTRIBUTING.md)**: Formalizes the local `venv` setup, formatting/linting using Black and Ruff, and PR documentation rules.
@@ -161,6 +163,9 @@ For more detailed information, please refer to the specific documentation guides
 ├── Makefile                # Primary entrypoint for running jobs and managing Docker
 ├── README.md               # This file
 ├── CONTRIBUTING.md         # Developer setup and PR guide
+├── COMMAND_CATALOG.md      # Every make target, with options and examples
+├── .env.example            # Template for .env (required secrets, image tags, generator settings)
+├── .github/workflows/      # CI: lint + offline tests on every PR, Spark/Iceberg suites nightly
 ├── docker-compose.yml      # Multi-container orchestration definitions
 ├── pyproject.toml          # Project configuration, dependencies, and lint settings
 ├── metadata/               # Dynamic Metadata Layer (datasets, contracts, lineage, quality, ownership JSONs)
@@ -173,16 +178,16 @@ For more detailed information, please refer to the specific documentation guides
 │   ├── grafana/            # Provisioned dashboards (KPIs, quality, ops) and alert rules
 │   └── prometheus/         # Prometheus metrics scrape configurations
 ├── notebooks/              # Jupyter notebooks for data analysis and prototyping
-├── scripts/                # Bootstrap and helper shell scripts (wait-for-services, database seeding)
+├── scripts/                # Helper scripts (wait-for-services, database seeding, run_batch_job.sh, generate_metadata.py)
 ├── src/
 │   ├── dataone/
-│   │   ├── batch/          # Batch ETL pipeline scripts (bronze_to_silver, SCD Type 2)
+│   │   ├── batch/          # Batch ETL: bronze_to_silver (stage entrypoint + silver), gold_marts, clickhouse_sync, scd2_customer_dim, backfill
 │   │   ├── config.py       # Centralized environment variable and credential management
 │   │   ├── generators/     # Synthetic data generators (orders, reviews, clickstream, campaigns)
 │   │   ├── ingestion/      # CDC Simulator and Kafka producers
 │   │   ├── lineage/        # Reusable internal lineage abstraction and OpenLineage emitter
 │   │   ├── metadata/       # Metadata registry and contract validation logic
-│   │   ├── orchestration/  # Lightweight orchestration daemons (nightly batch and CDC polling)
+│   │   ├── orchestration/  # Prefect flows (nightly-batch, backfill, cdc-poll)
 │   │   ├── quality/        # Custom PySpark Data Quality validators and gates
 │   │   ├── streaming/      # Spark Structured Streaming job (Kafka -> Bronze Lakehouse)
 │   │   └── utils/          # Spark session builders, Iceberg helpers, schemas, and logging
