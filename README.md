@@ -18,6 +18,14 @@
 
 An end-to-end modern data engineering project demonstrating Change Data Capture (CDC), streaming analytics, and batch processing built on a local **Lakehouse** architecture using Apache Iceberg, PySpark, ClickHouse, and Grafana.
 
+## 🎬 DataOne in 22 Seconds
+
+<!--
+  To show the inline player: edit this file on github.com, drag brag-github.mp4 into the editor,
+  and replace the image line below with the https://github.com/user-attachments/assets/... URL it inserts.
+-->
+![DataOne in 22 seconds](docs/images/dataone-video-poster.jpg)
+
 ---
 
 ## 🛠️ Tool Stack Selection & Justification
